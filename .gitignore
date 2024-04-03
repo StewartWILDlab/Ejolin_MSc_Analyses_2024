@@ -1,0 +1,12 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+login.R
+
+Raw_Data/
+Processed_Data/
+Figures/
+Spatial/
+Workspace/
