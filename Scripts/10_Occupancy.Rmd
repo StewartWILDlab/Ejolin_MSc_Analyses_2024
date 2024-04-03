@@ -1,0 +1,527 @@
+---
+title: "Chapter 11 Occupancy"
+output: html_document
+date: "2023-08-09"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Occupancy modelling has been one of the mainstays of camera traps data analysis for many years, so learning how to wangle our data into occupancy-style formats is essential.
+
+When we survey wild and free ranging populations using any sampling methodology, the probability of detecting a given individual or species if it is actually present on the landscape at the time of sampling is typically less than one. This is because wild animals are often hard to see! This issue is termed “imperfect detection”.
+
+In order to deal with the imperfect detection issue - occupancy models separate our the counts of a given species at a site into two processes:
+
+1. occupancy (ψ) - which is the probability of a species occurring within a spatial unit (or “site”) during the sampling session
+2. detection probability (p) - the probability that the species will be detected given that it already occurs at a site
+
+In order to separate out the occupancy process from the detection process, surveys need to occur at replicated ‘sites’ and we need repeated ‘visits’ to the same site. It is important to know that in camera trap studies, practitioners typically treat individual locations as sites and rather than repeated return to a location to survey it at different times, they divide the continuous camera activity data into block of time (e.g. 1 to 7 day windows).
+
+Occupancy models were not developed specifically for camera traps - thus there are a suite of assumptions we need to make about the populations we survey when applying occupancy models. We do not address these here. However, below we provide a list introductory resources for you to dig into the occupancy models to decide if they are appropriate for your situation:
+
+Let’s focus our time on getting our data into the right format, and applying some occupancy models!
+```{r}
+# Check you have them and load them
+list.of.packages <- c("kableExtra", "tidyr", "ggplot2", "gridExtra", "dplyr", "unmarked", "lubridate", "tibble", "sf", "gfcanalysis", "MuMIn", "spOccupancy")
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+lapply(list.of.packages, require, character.only = TRUE)
+```
+
+# 10.1 Single species occupancy model
+
+In this example we will use the ...weekly_observations dataframe we created in the data creation section. We do this because 7 days is a time interval which occupancy models are often divided into for occupancy analyses.
+```{r}
+# Import the weekly observations data set
+week_obs <- read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_week.csv", header=T)
+```
+
+As with previous chapters, we will start by focusing on *Caribou.
+
+We first need to create a site by occasion matrix for our focal species, using a 7-day occasion length. This means we need to break our camera data into seven day bins.
+
+We can create the detection histories using the following code:
+```{r}
+# Use white-tailed deer
+focal_sp<- "Caribou"
+
+# subset to 2019
+#tmp_week <- week_obs[substr(week_obs$date,1,4)==c(2021,2022),]
+tmp_week<-week_obs
+
+# Create a new column "date" in the format "year-week"
+tmp_week$date <- paste(tmp_week$year, tmp_week$week, sep = "-")
+
+# Create the Y data  
+y_dat <- tmp_week[,c("location", "date", focal_sp)] %>% # Subset to just Caribou
+            pivot_wider(names_from = date, values_from = focal_sp) # Shift to wide format
+
+# Convert it to a matrix - but only keep the date values
+y_mat <- as.matrix(y_dat[,unique(tmp_week$date)])
+
+# Update the row names
+row.names(y_mat) <- y_dat$location
+```
+
+It is a matrix of all the weeks the cameras were active, and the count of the independent detections in that interval. The fill = NA command puts a zero where there is data for a given day.
+
+You can see that in some columns we have values > 1 - this is because we had more than one independent observation in that week. Occupancy analyses (typically) require this data to be in detection/non-dection (0 or 1) format. So lets change that here.
+
+```{r}
+# Where y_mat is > 1, and where y_mat isn't NA - give it the value 1
+y_mat[y_mat>1 & is.na(y_mat)==F] <- 1
+```
+
+However, we have lost our effort information - the number of days each camera was active in a given time period. So we need another data frame!
+
+To get that information we need to create an effort history eff_mat:
+```{r}
+# To create the effort matrix - inst of the Focal Species bring in the effort
+eff_mat <- tmp_week[,c("location", "date", "n_days_effort")]
+
+eff_mat <-  eff_mat %>%
+  # Create a matrix based on dates and effort
+  spread(date,n_days_effort, fill = NA) %>% 
+  # group by deloyment Location ID, then make that the row.namesd
+  group_by(location) %>%
+  column_to_rownames( var = "location") 
+
+eff_mat <- as.matrix(eff_mat)
+```
+
+We might want to remove all of the data from the weeks where we did not get a complete sample:
+
+##NOTE: 2024-01-15 ############################################
+Do I actually want to get rid of this data? Should I get rid of the early 2021 data?
+```{r}
+y_mat[eff_mat!=7] <- NA
+```
+
+## 10.1.1 Unmarked package
+
+One of the hurdles in using the unmarked package is it uses a different style of dataframe called an unmarked dataframe. It is essentially a compillation of the different dataframes we need for the analysis (y data and covariate data). We asemmbled the Y data above, so now lets make the covariates:
+
+```{r}
+locs <-  read.csv("Processed_Data/TDN_camera_locations_and_covariates_cleaned.csv")
+
+# Unmarked wants your detection history, effort data and site covariates as matrices. But the order is important!
+# Check the order of your matrices and covariates files matches... or you will get nonsense!
+table(locs$location == row.names(y_mat))
+
+```
+
+Data standardization
+
+Unmarked models benefit from standardizing your covariates - it helps the solving algorithms converge on an appropriate solution. To do this we use the MuMIn package.
+```{r}
+library(MuMIn)
+z_locs <- stdize(locs)
+
+```
+
+Take a look at it to see what it has done!
+
+We then need to build an ‘unmarked’ data frame. You don’t really need to know why they are different or how to use one (although it helps), knowing how to use one is sufficient.
+```{r}
+# Build an unmarkedFramOccu
+un_dat <- unmarkedFrameOccu(y = y_mat, # your occupancy data
+                            siteCovs = z_locs) # Your site covariates 
+```
+
+We can then fit the occupancy model, lets start with a “null” model with no predictors on detection or occupancy.
+
+```{r}
+# Fit general model all variables
+m0 <- occu(formula = ~1 # detection formula first
+                     ~1, # occupancy formula second,
+                data = un_dat)
+
+#view results
+summary(m0)
+```
+
+The estimate you see for both occupancy and detection probability is on the log-link scale. If we want to calculate the occupancy probability, we can use the backTransform() function:
+
+```{r}
+backTransform(m0, type = "state")
+```
+
+So the probability that a Caribou occupies one of the survey locations is ~0.42. The probability of occupancy decreases slightly from 0.421 to 0.417 when we include all weeks, including those with less than 7 survey days.
+
+For the detection probability we specify “det”:
+
+```{r}
+backTransform(m0, type = "det")
+```
+
+The probability that we detect a Caribou in a given unit of time (7-days), given that it is there to be detected, is ~0.1.
+
+The probability of detection increases slightly from 0.106 to 0.118 when we include all weeks, including those with less than 7 survey days.
+
+Let’s fit a couple of other models!
+
+First with a continuous covariate on the occupancy probability, then a categorical one too:
+```{r}
+# Occupancy is influenced by elevation
+m1 <- occu(formula = ~1 # detection formula first
+                     ~z.mean_elev, # occupancy formula second,
+                data = un_dat)
+
+# Occupancy is influenced by the dominant landcover at the 1km hexagon level where a camera is deployed on
+m2 <- occu(formula = ~1 # detection formula first
+                     ~z.mean_tri, # occupancy formula second,
+                data = un_dat)
+```
+
+We can perform model selection on these different scenarios in the same way as in the habitat use chapter - using the MuMIn package:
+
+```{r}
+model.sel(m0,m1,m2)
+```
+
+The best supported model contains dom_habitat_duc but it's only marginally better than dom_habitat_lcc_hexagon. 
+
+Target_cons is only slightly better than the null model.
+
+When comparing mean_elev and mean_tri, the best supported model for Caribou is mean_tri
+
+For Muskox, elevation is worse than the null model and tri is only slightly better. 
+
+##10.1.2 Plotting predictions
+
+We can observe the relationship between our covariates and our occupancy probabilities through the use of a dummy dataframe (which we will call new_dat). A dummy dataframe is essentially just a dataframe built up of dummy data - which lies within the upper and lower limits of the covariates we already have. We wouldn’t want to extrapolate beyond our data! We can then plot the results:
+
+```{r}
+# Generate new data to predict from 
+new_dat <- cbind(expand.grid(
+                  z.mean_elev=seq(min(z_locs$z.mean_elev),max(z_locs$z.mean_elev), # add more covariates here if the model is more complex
+                  length.out=25)))
+
+# Make the predicted values for the data you supplied                 
+new_dat <- predict(m1, type="state", newdata = new_dat, appendData=TRUE)
+
+
+#Plot the results
+
+p1 <- ggplot(new_dat, aes(x = z.mean_elev, y = Predicted)) + # mean line
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.5, linetype = "dashed") + #Confidence intervals
+  geom_path(size = 1) +
+  labs(x = "Elevation", y = "Occupancy probability") + # axis labels
+  theme_classic() +
+  coord_cartesian(ylim = c(0,1))
+
+p1
+
+# Generate new data to predict from 
+new_dat <- cbind(expand.grid(
+                  z.mean_tri=seq(min(z_locs$z.mean_tri),max(z_locs$z.mean_tri), # add more covariates here if the model is more complex
+                  length.out=25)))
+
+# Make the predicted values for the data you supplied                 
+new_dat <- predict(m2, type="state", newdata = new_dat, appendData=TRUE)
+
+
+#Plot the results
+
+p2 <- ggplot(new_dat, aes(x = z.mean_tri, y = Predicted)) + # mean line
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.5, linetype = "dashed") + #Confidence intervals
+  geom_path(size = 1) +
+  labs(x = "TRI", y = "Occupancy probability") + # axis labels
+  theme_classic() +
+  coord_cartesian(ylim = c(0,1))
+
+p2
+```
+
+###10.1.2.1. Buffer Sizes
+#####NOTE: 2024-01-15 #######################################
+Not sure if the proportions of each landcover type can be compared as they were calculated even after standardization....
+
+
+```{r}
+m1 <- occu(formula = ~1 # detection formula first
+                     ~z.X300_SPPGLM, # occupancy formula second,
+                data = un_dat)
+
+m2 <- occu(formula = ~1 # detection formula first
+                     ~z.X1000_SPPGLM, # occupancy formula second,
+                data = un_dat)
+
+m3 <- occu(formula = ~1 # detection formula first
+                     ~z.X1622_SPPGLM, # occupancy formula second,
+                data = un_dat)
+
+m4 <- occu(formula = ~1 # detection formula first
+                     ~z.X3245_SPPGLM, # occupancy formula second,
+                data = un_dat)
+```
+
+
+```{r}
+model.sel(m0,m1,m2,m3,m4)
+```
+
+
+```{r}
+# Generate new data to predict from 
+new_dat <- cbind(expand.grid(
+                  z.X300_SPPGLM=seq(min(z_locs$z.X300_SPPGLM),max(z_locs$z.X300_SPPGLM), # add more covariates here if the model is more complex
+                  length.out=25)))
+
+# Make the predicted values for the data you supplied                 
+new_dat <- predict(m1, type="state", newdata = new_dat, appendData=TRUE)
+
+
+#Plot the results
+
+p1 <- ggplot(new_dat, aes(x = z.X300_SPPGLM, y = Predicted)) + # mean line
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.5, linetype = "dashed") + #Confidence intervals
+  geom_path(size = 1) +
+  labs(x = "z.X300_SPPGLM", y = "Occupancy probability") + # axis labels
+  theme_classic() +
+  coord_cartesian(ylim = c(0,1))
+
+p1
+
+# Generate new data to predict from 
+new_dat <- cbind(expand.grid(
+                  z.X1000_SPPGLM=seq(min(z_locs$z.X1000_SPPGLM),max(z_locs$z.X1000_SPPGLM), # add more covariates here if the model is more complex
+                  length.out=25)))
+
+# Make the predicted values for the data you supplied                 
+new_dat <- predict(m2, type="state", newdata = new_dat, appendData=TRUE)
+
+
+#Plot the results
+
+p2 <- ggplot(new_dat, aes(x = z.X1000_SPPGLM, y = Predicted)) + # mean line
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.5, linetype = "dashed") + #Confidence intervals
+  geom_path(size = 1) +
+  labs(x = "z.X1000_SPPGLM", y = "Occupancy probability") + # axis labels
+  theme_classic() +
+  coord_cartesian(ylim = c(0,1))
+
+p2
+
+# Generate new data to predict from 
+new_dat <- cbind(expand.grid(
+                  z.X1622_SPPGLM=seq(min(z_locs$z.X1622_SPPGLM),max(z_locs$z.X1622_SPPGLM), # add more covariates here if the model is more complex
+                  length.out=25)))
+
+# Make the predicted values for the data you supplied                 
+new_dat <- predict(m3, type="state", newdata = new_dat, appendData=TRUE)
+
+
+#Plot the results
+
+p3 <- ggplot(new_dat, aes(x = z.X1622_SPPGLM, y = Predicted)) + # mean line
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.5, linetype = "dashed") + #Confidence intervals
+  geom_path(size = 1) +
+  labs(x = "z.X1622_SPPGLM", y = "Occupancy probability") + # axis labels
+  theme_classic() +
+  coord_cartesian(ylim = c(0,1))
+
+p3
+
+# Generate new data to predict from 
+new_dat <- cbind(expand.grid(
+                  z.X3245_SPPGLM=seq(min(z_locs$z.X3245_SPPGLM),max(z_locs$z.X3245_SPPGLM), # add more covariates here if the model is more complex
+                  length.out=25)))
+
+# Make the predicted values for the data you supplied                 
+new_dat <- predict(m4, type="state", newdata = new_dat, appendData=TRUE)
+
+
+#Plot the results
+
+p4 <- ggplot(new_dat, aes(x = z.X3245_SPPGLM, y = Predicted)) + # mean line
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.5, linetype = "dashed") + #Confidence intervals
+  geom_path(size = 1) +
+  labs(x = "z.X3245_SPPGLM", y = "Occupancy probability") + # axis labels
+  theme_classic() +
+  coord_cartesian(ylim = c(0,1))
+
+p4
+```
+
+###10.1.2.2. Landcovers
+
+```{r}
+m1 <- occu(formula = ~1 # detection formula first
+                     ~z.X300_SPPGLM, # occupancy formula second,
+                data = un_dat)
+
+m2 <- occu(formula = ~1 # detection formula first
+                     ~z.X300_SPPSLM, # occupancy formula second,
+                data = un_dat)
+
+m3 <- occu(formula = ~1 # detection formula first
+                     ~z.X300_BAR, # occupancy formula second,
+                data = un_dat)
+
+m4 <- occu(formula = ~1 # detection formula first
+                     ~z.X300_WAT, # occupancy formula second,
+                data = un_dat)
+
+m5 <- occu(formula = ~1 # detection formula first
+                     ~z.X300_WET, # occupancy formula second,
+                data = un_dat)
+
+m6 <- occu(formula = ~1 # detection formula first
+                     ~z.X300_TSPNF, # occupancy formula second,
+                data = un_dat)
+```
+
+
+```{r}
+model.sel(m0,m1,m2,m3,m4,m5,m6)
+```
+                                df    logLik   AICc  delta weight
+m2                                3 -1637.297 3280.7   0.00      1
+m6                         -4.35  3 -1666.076 3338.2  57.56      0
+m1                                3 -1672.984 3352.0  71.37      0
+m3                                3 -1701.829 3409.7 129.06      0
+m5         0.5319                 3 -1719.783 3445.6 164.97      0
+m0                                2 -1728.877 3461.8 181.12      0
+m4                                3 -1728.828 3463.7 183.06      0
+
+At 300m SPPSLM is the best supported model. TSPNF is next up but this is due to the very negative relationship. SPPGLM and BAR have lesser positive relationships. WET explains slightly more than the null model and WAT is worse than the null model. 
+
+Have to imagine that these WET and WAT models would perform differently in a single season model.
+
+```{r}
+# Generate new data to predict from 
+new_dat <- cbind(expand.grid(
+                  z.X300_SPPGLM=seq(min(z_locs$z.X300_SPPGLM),max(z_locs$z.X300_SPPGLM), # add more covariates here if the model is more complex
+                  length.out=25)))
+
+# Make the predicted values for the data you supplied                 
+new_dat <- predict(m1, type="state", newdata = new_dat, appendData=TRUE)
+
+
+#Plot the results
+
+p1 <- ggplot(new_dat, aes(x = z.X300_SPPGLM, y = Predicted)) + # mean line
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.5, linetype = "dashed") + #Confidence intervals
+  geom_path(size = 1) +
+  labs(x = "z.X300_SPPGLM", y = "Occupancy probability") + # axis labels
+  theme_classic() +
+  coord_cartesian(ylim = c(0,1))
+
+p1
+
+# Generate new data to predict from 
+new_dat <- cbind(expand.grid(
+                  z.X300_SPPSLM=seq(min(z_locs$z.X300_SPPSLM),max(z_locs$z.X300_SPPSLM), # add more covariates here if the model is more complex
+                  length.out=25)))
+
+# Make the predicted values for the data you supplied                 
+new_dat <- predict(m2, type="state", newdata = new_dat, appendData=TRUE)
+
+
+#Plot the results
+
+p2 <- ggplot(new_dat, aes(x = z.X300_SPPSLM, y = Predicted)) + # mean line
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.5, linetype = "dashed") + #Confidence intervals
+  geom_path(size = 1) +
+  labs(x = "z.X300_SPPSLM", y = "Occupancy probability") + # axis labels
+  theme_classic() +
+  coord_cartesian(ylim = c(0,1))
+
+p2
+
+# Generate new data to predict from 
+new_dat <- cbind(expand.grid(
+                  z.X300_BAR=seq(min(z_locs$z.X300_BAR),max(z_locs$z.X300_BAR), # add more covariates here if the model is more complex
+                  length.out=25)))
+
+# Make the predicted values for the data you supplied                 
+new_dat <- predict(m3, type="state", newdata = new_dat, appendData=TRUE)
+
+
+#Plot the results
+
+p3 <- ggplot(new_dat, aes(x = z.X300_BAR, y = Predicted)) + # mean line
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.5, linetype = "dashed") + #Confidence intervals
+  geom_path(size = 1) +
+  labs(x = "z.X300_BAR", y = "Occupancy probability") + # axis labels
+  theme_classic() +
+  coord_cartesian(ylim = c(0,1))
+
+p3
+
+# Generate new data to predict from 
+new_dat <- cbind(expand.grid(
+                  z.X300_WAT=seq(min(z_locs$z.X300_WAT),max(z_locs$z.X300_WAT), # add more covariates here if the model is more complex
+                  length.out=25)))
+
+# Make the predicted values for the data you supplied                 
+new_dat <- predict(m4, type="state", newdata = new_dat, appendData=TRUE)
+
+
+#Plot the results
+
+p4 <- ggplot(new_dat, aes(x = z.X300_WAT, y = Predicted)) + # mean line
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.5, linetype = "dashed") + #Confidence intervals
+  geom_path(size = 1) +
+  labs(x = "z.X300_WAT", y = "Occupancy probability") + # axis labels
+  theme_classic() +
+  coord_cartesian(ylim = c(0,1))
+
+p4
+
+# Generate new data to predict from 
+new_dat <- cbind(expand.grid(
+                  z.X300_WET=seq(min(z_locs$z.X300_WET),max(z_locs$z.X300_WET), # add more covariates here if the model is more complex
+                  length.out=25)))
+
+# Make the predicted values for the data you supplied                 
+new_dat <- predict(m5, type="state", newdata = new_dat, appendData=TRUE)
+
+
+#Plot the results
+
+p5 <- ggplot(new_dat, aes(x = z.X300_WET, y = Predicted)) + # mean line
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.5, linetype = "dashed") + #Confidence intervals
+  geom_path(size = 1) +
+  labs(x = "z.X300_WET", y = "Occupancy probability") + # axis labels
+  theme_classic() +
+  coord_cartesian(ylim = c(0,1))
+
+p5
+```
+
+###10.1.2.3. Categorical covariates
+
+```{r}
+m1 <- occu(formula = ~1 # detection formula first
+                     ~target_cons, # occupancy formula second,
+                data = un_dat)
+
+m2 <- occu(formula = ~1 # detection formula first
+                     ~dom_habitat_duc, # occupancy formula second,
+                data = un_dat)
+
+m3 <- occu(formula = ~1 # detection formula first
+                     ~dom_habitat_lcc_hexagon, # occupancy formula second,
+                data = un_dat)
+```
+
+```{r}
+model.sel(m0,m1,m2,m3)
+```
+
+Dominant duc and lcc habitat are pretty similar. Targets are only slightly better than null.
+
+Can't get the plotting function to work with categorical variables. 
+
+##10.1.3 spOccupancy
+
+
+
+#10.2 MSOM
+
+

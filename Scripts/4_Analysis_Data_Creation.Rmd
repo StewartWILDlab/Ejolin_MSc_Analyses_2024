@@ -1,0 +1,640 @@
+---
+title: "Chapter 6 Analysis data creation"
+output: html_document
+date: "2023-08-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Check you have them and load them
+list.of.packages <- c("kableExtra", "tidyr", "ggplot2", "gridExtra", "lme4", "dplyr", "Hmsc", "jtools", "lubridate", "corrplot", "MuMIn", "stringr", "mefa4", "tidyverse")
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+lapply(list.of.packages, require, character.only = TRUE)
+```
+
+# Load data
+
+The codes to create analysis dataframes are now outdated and can be replaced by 
+dataframes created within 1c. wildRtrax.R
+
+Daily_lookup section is still relevant, could probably move to 1c. wildRtrax.R
+
+Final data check code chunk at the end is still relevant and useful.
+
+```{r}
+tdn_main_raw<-read.csv("Raw_Data/TDN_RawData_27112023/NWTBM_Thaidene_Nëné_Biodiversity_Project_2021_main_report.csv")
+length(unique(tdn_main_raw$location))
+
+#filter raw data downloads before going on to data exploration/analysis
+
+#BMS-CRU-004-01 had one single photo taken on 2021-03-03 11:24:10 before being deployed in August 2021
+tag_data_tmp<-filter(tdn_main_raw,!((image_id == 60289868) & #filter image by image_id 
+                                      (image_date_time == " 2021-03-03 11:24:10"))) #and image_date_time
+stopifnot(nrow(tag_data_tmp)==(nrow(tdn_main_raw)-1)) #stop if the new df isn't smaller by one row
+
+#BIO-TDN-029-02 wasn't retrieved until 2023 but staff walked passed it on 2022-08-19 13:30:10
+tag_data_tmp2<-filter(tag_data_tmp,!((location == "BIO-TDN-029-02") & #filter by location
+                                  (as_datetime(image_date_time)>as_datetime("2022-08-19 13:30:10")))) #filter images taken after 2022-08-19 13:30:10
+stopifnot(nrow(tag_data_tmp2)==(nrow(tag_data_tmp)-1076)) #stop if the new df isn't smaller by 1076
+
+#long term deployments retrieved early, not comparable with other data
+
+#BIO-TDN-052-06 filter out all images after 2022-08-17 16:57:50
+tag_data_tmp3<-filter(tag_data_tmp2,!((location == "BIO-TDN-052-06") & #filter by location
+                                        (as_datetime(image_date_time)>as_datetime("2022-08-17 16:57:50")))) #filter out images taken after date/time
+stopifnot(nrow(tag_data_tmp3)==(nrow(tag_data_tmp2)-631)) #stop if the new df isn't smaller by the correct number of tags
+
+#BIO-TDN-052-07 filter out all images after 2022-08-17 16:55:08
+tag_data_tmp4<-filter(tag_data_tmp3,!((location == "BIO-TDN-052-07") & #filter by location
+                                        (as_datetime(image_date_time)>as_datetime("2022-08-17 16:55:08")))) #filter out images taken after date/time
+stopifnot(nrow(tag_data_tmp4)==(nrow(tag_data_tmp3)-866)) #stop if the new df isn't smaller by the correct number of tags
+
+#BIO-TDN-165-01 filter out all images after 2022-08-17 11:58:18
+tag_data_tmp5<-filter(tag_data_tmp4,!((location == "BIO-TDN-165-01") & #filter by location
+                                        (as_datetime(image_date_time)>as_datetime("2022-08-17 11:58:18")))) #filter out images taken after date/time
+stopifnot(nrow(tag_data_tmp5)==(nrow(tag_data_tmp4)-1603)) #stop if the new df isn't smaller by the correct number of tags
+
+#BIO-TDN-165-06 filter out all images after 2022-08-17 13:37:20
+tag_data_tmp6<-filter(tag_data_tmp5,!((location == "BIO-TDN-165-06") & #filter by location
+                                        (as_datetime(image_date_time)>as_datetime("2022-08-17 13:37:20")))) #filter out images taken after date/time
+stopifnot(nrow(tag_data_tmp6)==(nrow(tag_data_tmp5)-542)) #stop if the new df isn't smaller by the correct number of tags
+
+#remove the following stations completely
+
+#BIO-TDN-HF-G1, BIO-TDN-HF-G2, BIO-TDN-HF-LF, BIO-TDN-HF-P1, BIO-TDN-HF-R1 all new sites which were added then removed. 
+locations_to_filter <- c("BIO-TDN-HF-G1", "BIO-TDN-HF-G2", "BIO-TDN-HF-LF", "BIO-TDN-HF-P1", "BIO-TDN-HF-R1")
+img<- tag_data_tmp6 %>% filter(!location %in% locations_to_filter)
+
+length(unique(tag_data$location)) #check to make sure the HF locations got filtered, should be 307
+
+rm(tag_data_tmp,tag_data_tmp2,tag_data_tmp3,tag_data_tmp4,tag_data_tmp5,tag_data_tmp6) #remove tag_data_tmp to clean environment
+
+img[img$species_common_name == "Barren-ground Caribou","species_common_name"] <- "Caribou"
+img[img$species_common_name == "Caribou","species_scientific_name"] <- "RANGIFER TARANDUS"
+img[img$species_common_name == "Caribou","species_rank"] <- "Species"
+
+#img$species_scientific_name <- na_if(img$species_scientific_name, '')
+
+sp_summary <- read.csv("Processed_Data/TDN_CAM_Species_List_v14.csv", header=T)
+
+sp_summary <- select(sp_summary,-'species_scientific_name')
+
+#sp_summary$species_scientific_name<- toupper(sp_summary$species_scientific_name)
+
+img_join <- left_join(img,sp_summary,by='species_common_name')
+```
+
+# 4.5 Our data
+
+Data standardization script to get our data to work with CMI C.Beirne workshop
+
+## 4.5.1 Filter to target species
+
+```{r}
+# Remove observations without animals detected, where we don't know the species, and non-mammals
+ img_sub <- img_join %>% filter(#is_blank==0,                # Remove the blanks
+                          is.na(img_join$species_class)==FALSE, # Remove classifications which don't have species 
+                          species_class=="Mammalia",          # Subset to mammals
+                          family!="Hominidae")         # Subset to anything that isn't human
+```
+
+```{r}
+img_sub %>% group_by(species_common_name) %>% summarize(n())
+```
+
+   species_common_name       `n()`
+   <chr>                     <int>
+ 1 Arctic Fox                   10
+ 2 Arctic Ground Squirrel      192
+ 3 Arctic Hare                 190
+ 4 Black Bear                 3700
+ 5 Canada Lynx                 578
+ 6 Caribou                  183482
+ 7 Ermine                       10
+ 8 Gray Wolf                  1315
+ 9 Grizzly Bear               1290
+10 Marten                      675
+11 Moose                     13159
+12 Muskox                    49157
+13 Muskrat                       3
+14 Northern Flying Squirrel      3
+15 Porcupine                   437
+16 Red Fox                     446
+17 Red Squirrel               2007
+18 Snowshoe Hare             10649
+19 Wolverine                   581
+
+## 4.5.2 Create a daily camera activity lookup
+
+Next we create the daily camera activity look up (remember, one row for every day a camera is active).
+
+```{r}
+dep<-read.csv("Processed_Data/TDN_CAM_Deployment_Data_v14.csv")
+
+dep[c('deployment_begin_date', 'deployment_begin_time')] <- str_split_fixed(dep$deployment_begin_date, ' ', 2)
+
+dep[c('deployment_end_date', 'deployment_end_time')] <- str_split_fixed(dep$deployment_end_date, ' ', 2)
+
+# Remove any deployments without end dates
+tmp <- dep[is.na(dep$deployment_end_date)==F,]
+
+# Create an empty list to store our days
+daily_lookup <- list()
+
+# Loop through the deployment dataframe and create a row for every day the camera is active
+for(i in 1:nrow(tmp))
+{
+  if(ymd(tmp$deployment_begin_date[i])!=ymd(tmp$deployment_end_date[i]))
+  {
+      daily_lookup[[i]] <- data.frame("date"=seq(ymd(tmp$deployment_begin_date[i]), ymd(tmp$deployment_end_date[i]), by="days"), "location"=tmp$location[i])
+  }
+}
+
+# Merge the lists into a dataframe
+row_lookup <- bind_rows(daily_lookup)
+
+# Remove duplicates - when start and end days are the same for successive deployments
+row_lookup <- row_lookup[duplicated(row_lookup)==F,]
+
+# summary stats for survey effort
+# Convert the 'date' column to Date format
+row_lookup$date <- as.Date(row_lookup$date)
+
+# Group by 'location' and calculate the mean number of dates
+mean_dates_per_location <- row_lookup %>%
+  group_by(location) %>%
+  summarize(mean_dates = mean(n()))
+
+# Summary statistics for mean across all locations
+summary(mean_dates_per_location$mean_dates)
+
+mean(mean_dates_per_location$mean_dates) #average effort across cameras
+sd(mean_dates_per_location$mean_dates) #std deviation in effort across cameras
+
+#summary stats for effort across seasons
+#mean_start_date 2021-10-28
+#mean_end_date 2022-05-11
+# Define the start and end dates for winter
+winter_start_date <- as.Date("2021-10-28")
+winter_end_date <- as.Date("2022-05-11")
+
+# Create a new column 'season' based on the specified time periods
+row_lookup <- row_lookup %>%
+  mutate(season = ifelse(date >= winter_start_date & date <= winter_end_date, "Winter", "Summer"))
+
+# Group by 'location' and 'season' and calculate the mean number of dates
+mean_dates_per_location_season <- row_lookup %>%
+  group_by(location, season) %>%
+  summarize(mean_dates = mean(n()))
+
+# Group by 'season' and calculate the average mean_dates for Summer and Winter
+average_mean_dates_season <- mean_dates_per_location_season %>%
+  group_by(season) %>%
+  summarize(average_mean_dates = mean(mean_dates))
+
+print(average_mean_dates_season)
+```
+83827 camera effort days in total
+mean of 273 +/- 72 (SD)
+
+ Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+    2.0   242.0   281.0   273.1   323.0   387.0
+    
+Mean summer survey effort of 146
+Mean winter survey effort of 131
+
+## 4.5.3 Determine ‘independent’ camera detections
+
+Outdated code
+```{r}
+# Set the "independence" interval in minutes
+independent <- 30
+```
+
+```{r}
+# If yes use that, if no use 'number_of_objects'
+img_sub$animal_count <- img_sub$individual_count    
+```
+
+```{r}
+img_tmp <- img_sub %>%
+              arrange(location) %>%        # Order by deployment_id
+              group_by(location, species_common_name) %>%   # Group species together
+              mutate(duration = int_length(image_date_time %--% lag(image_date_time))) # Calculate the gap between successive detections
+```
+
+```{r}
+library(stringr)
+# Give a random value to all cells
+img_tmp$event_id <- 9999
+
+# Create a counter
+counter <- 1
+
+# Make a unique code that has one more zero than rows in your dataframe  
+num_code <- as.numeric(paste0(nrow(img_sub),0))
+
+# Loop through img_tmp - if gap is greater than the threshold -> give it a new event ID
+for (i in 2:nrow(img_tmp)) {
+  img_tmp$event_id[i-1]  <- paste0("E", str_pad(counter, nchar(num_code), pad = "0"))
+  
+  if(is.na(img_tmp$duration[i]) | abs(img_tmp$duration[i]) > (independent * 60))
+    {
+      counter <- counter + 1
+    }
+}
+
+# Update the information for the last row - the loop above always updates the previous row... leaving the last row unchanged
+   
+ # group ID  for the last row
+ if(img_tmp$duration[nrow(img_tmp)] < (independent * 60)|
+    is.na(img_tmp$duration[nrow(img_tmp)])){
+   img_tmp$event_id[nrow(img_tmp)] <- img_tmp$event_id[nrow(img_tmp)-1]
+ } else{
+   counter <- counter + 1
+   img_tmp$event_id[nrow(img_tmp)] <- paste0("E", str_pad(counter, nchar(num_code), pad = "0"))
+ }
+
+# remove the duration column
+img_tmp$duration <- NULL
+
+
+```
+
+## 4.5.4 Add additional data
+
+```{r}
+  # find out the last and the first of the time in the group
+  top <- img_tmp %>% group_by(event_id) %>% top_n(1,image_date_time) %>% dplyr::select(event_id, image_date_time)
+  bot <- img_tmp %>% group_by(event_id) %>% top_n(-1,image_date_time) %>% dplyr::select(event_id, image_date_time)
+  names(bot)[2] <- c("timestamp_end")
+  
+  img_num <- img_tmp %>% group_by(event_id) %>% summarise(event_observations=n()) # number of images in the event
+  event_grp <- img_tmp %>% group_by(event_id) %>% summarise(event_groupsize=max(animal_count))
+
+  # calculate the duration and add the other elements
+  diff <-  top %>% left_join(bot, by="event_id") %>%
+      mutate(event_duration=abs(int_length(image_date_time %--% timestamp_end))) %>%
+      left_join(event_grp, by="event_id")%>%
+      left_join(img_num, by="event_id")
+
+  # Remove columns you don't need
+  diff$image_date_time   <-NULL
+  diff$timestamp_end <-NULL
+  # remove duplicates
+  diff <- diff[duplicated(diff)==F,]
+    # Merge the img_tmp with the event data
+  img_tmp <-  img_tmp %>%
+   left_join(diff,by="event_id")
+```
+
+Finally lets subset to the first row of each event to create our independent dataframe!
+
+```{r}
+# Remove duplicates
+ind_dat <- img_tmp[duplicated(img_tmp$event_id)==F,]
+
+
+#attempt to make up for the left_join fuckup earlier on
+#ind_dat<- select(ind_dat,-'species_scientific_name.y')
+#colnames(ind_dat)[colnames(ind_dat) == "species_scientific_name.x"] ="species_scientific_name"
+
+```
+
+Next we remove any detections which occur outside of our known camera activity periods:
+
+####NOTE: 08/09/2023 Don't know what the hell is going on here but it's mucking things up... End up with 0 in ind_dat. Probably something to do with camera activity dates at BIO-TDN-029-02....OR COULD BE SOMETHING TO DO WITH INCORRECT DEPLOYMENT_BEGIN_DATE AT BMS-CRU-004-01
+
+#####UPDATE: 11/09/2023: Manually changed deployment begin date for BMS-CRU-004-01 and it didn't fix the error. Could try to use the fov tag and remove Out of Range detections as an alternative to subset ind_dat to remove any detections which occur outside of our known camera activity periods.
+
+```{r}
+# Make a  unique code for every day and deployment where cameras were functioning
+#tmp <- paste(row_lookup$date, row_lookup$location)
+
+#Subset ind_dat to data that matches the unique codes
+#ind_dat <- ind_dat[paste(substr(ind_dat$image_date_time,1,10), ind_dat$location) %in% tmp, ]
+
+#Subset ind_dat to data which within good FOV tags
+ind_dat <- subset(ind_dat,image_fov != 'Out of Range')
+
+```
+
+As a final step, we make the species column a ‘factor’ - this makes all the data frame building operations much simpler:
+
+```{r}
+ind_dat$species_scientific_name <- as.factor(ind_dat$species_scientific_name)
+```
+
+# 4.6 Creating analysis dataframes
+
+Finally, this script outputs 11 useful data frames for future data analysis:
+
+1. A data frame of “independent detections” at the 30 minute threshold you specified at the start:
+
+```{r}
+write.csv(ind_dat, paste0("Processed_Data/WildCo/","TDN", "_",independent ,"min_independent_detections.csv"), row.names = F)
+
+# also write the cleaned all detections file (some activity analyses require it)
+write.csv(img_tmp, paste0("Processed_Data/WildCo/","TDN_raw_detections.csv"), row.names = F)
+```
+
+2. The “daily_lookup” which is a dataframe of all days a given camera station was active. Some people use an lookup matrix for this step, but we find the long format is much easier to use in downstream analysis. - “data/processed_data/_daily_deport_lookup.csv”
+
+```{r}
+write.csv(row_lookup, paste0("Processed_Data/WildCo/","TDN_daily_lookup.csv"), row.names = F)
+```
+
+2b. Survey effort by location df
+
+```{r}
+write.csv(mean_dates_per_location, paste0("Processed_Data/WildCo/","TDN_camera_effort.csv"), row.names = F)
+```
+
+2c. Effort per season by location
+
+```{r}
+write.csv(mean_dates_per_location_season, paste0("Processed_Data/WildCo/","TDN_camera_effort_by_season.csv"), row.names = F)
+```
+3. Unique camera locations list:
+
+#NOTE: Already have a better location/covariate df
+
+When we start to build the covariates for data analysis, it is very useful to have a list of your final project’s camera locations. We create this below in a simplified form. You can include any columns which will be use for data analysis, and export it.
+
+```{r}
+#Subset the columns
+#tmp <- dep[, c("project_id", "placename", "longitude", "latitude", "feature_type")]
+# Remove duplicated rows
+#tmp<- tmp[duplicated(tmp)==F,]
+# write the file
+#write.csv(tmp, paste0("Processed_Data/WildCo/","TDN_camera_locations.csv"), row.names = F)
+```
+
+4. Final species list
+
+#NOTE: Already have a better species list
+
+We also want to create a final species list. We subset the data to just those included in the independent data, and then save the file.
+
+```{r}
+#tmp <- sp_list[sp_list$sp %in% ind_dat$sp,]
+
+# Remove the 'verified' column
+#tmp$verified <- NULL
+
+# We will replace the spaces in the species names with dots, this will make things easier for us later (as column headings with spaces in are annoying).
+#library(stringr)
+#tmp$sp <- str_replace(tmp$sp, " ", ".")
+
+
+#write.csv(tmp, paste0("data/processed_data/",ind_dat$project_id[1], "_species_list.csv"), row.names = F)
+```
+
+5 & 6: A ‘site x species’ matrix of the number of independent detections and species counts across the full study period:
+
+“data/processed_data/AlgarRestorationProject_30min_Independent_total_observations.csv”
+
+“data/processed_data/AlgarRestorationProject_30min_Independent_total_counts.csv”
+
+```{r}
+# Total counts
+  # Station / Month / deport / Species      
+  #tmp <- row_lookup
+  
+  # Calculate the number of days at each camera  
+  #total_obs <- tmp %>% 
+  #    group_by(location) %>%
+  #    summarise(days = n())
+  
+  # Convert to a data frame
+  #total_obs <- as.data.frame(total_obs)
+  
+  # Add columns for each species  
+  #total_obs[,levels(ind_dat$species_common_name)] <- NA
+  # Duplicate for counts
+  #total_count <- total_obs
+  # Test counter
+  #i <-1
+  # For each station, count the number of individuals/observations
+  #for(i in 1:nrow(total_obs))
+    #{
+    #  tmp <- ind_dat[ind_dat$location==total_obs$location[i],]
+      
+    #  tmp_stats <- tmp %>%  group_by(species_common_name, .drop=F) %>% summarise(obs=n(), count=sum(animal_count))
+      
+    #  total_obs[i,as.character(tmp_stats$species_common_name)] <- tmp_stats$obs
+    #  total_count[i,as.character(tmp_stats$species_common_name)] <- tmp_stats$count
+    #}
+
+  
+# Save them
+    
+#write.csv(total_obs, paste0("Processed_Data/WildCo/","TDN", "_",independent ,"_TDN_min_independent_total_observations.csv"), row.names = F) 
+
+#write.csv(total_count, paste0("Processed_Data/WildCo/","TDN", "_",independent ,"_TDN_min_independent_total_counts.csv"), row.names = F) 
+
+#code to import total_obs csv created in 7. Analysis_Data_Exploration.rmd , yes I realize this is backwards af
+total_obs<-read.csv("Processed_Data/WildCo/TDN_total_obs_v15.csv")
+```
+
+```{r}
+#ind_dat<-read.csv("Processed_Data/TDN_CAM_Independent_Detections_v10.csv")
+```
+
+
+7 & 8: A ‘site_month x species’ matrix of the number of independent detections and species counts across for each month in the study period:
+
+#NOTE: 11/10/2023: can no longer get this bologne to work...
+#UPDATE: 06/12/2023: I can still not get this shit to work...
+```{r}
+
+# Monthly counts
+  # Station / Month / days / Covariates / Species      
+  tmp <- row_lookup
+  # Simplify the date to monthly
+  tmp$date <- substr(tmp$date,1,7)
+  
+  # Calculate the number of days in each month  
+  mon_obs <- tmp %>% 
+      group_by(location,date ) %>%
+      summarise(days = n())
+  # Convert to a data frame
+  mon_obs <- as.data.frame(mon_obs)
+  
+  #add columns for each species  
+  mon_obs[, levels(ind_dat$species_scientific_name)] <- NA #for some reason scientific name works but common name doesn't
+  mon_count <- mon_obs
+  # For each month, count the number of individuals/observations
+  for(i in 1:nrow(mon_obs))
+    {
+      tmp <- ind_dat[ind_dat$location==mon_obs$location[i] & substr(ind_dat$image_date_time,1,7)== mon_obs$date[i],]
+       #tmp$animal_count <- as.numeric(as.character((tmp$animal_count)))
+      
+      tmp_stats <- tmp %>%  group_by(species_scientific_name, .drop=F) %>% summarise(obs=n(), count=sum(animal_count))
+      
+      mon_obs[i,as.character(tmp_stats$species_scientific_name)] <- tmp_stats$obs
+      mon_count[i,as.character(tmp_stats$species_scientific_name)] <- tmp_stats$count
+      
+    }
+
+  
+write.csv(mon_obs, paste0("Processed_Data/WildCo/","_TDN_min_independent_monthly_observations.csv"), row.names = F) 
+
+write.csv(mon_count, paste0("Processed_Data/WildCo/","_TDN_min_independent_monthly_counts.csv"), row.names = F) 
+```
+
+9 & 10: A ‘site_week x species’ matrix of the number of independent detections and species counts across for each week in the study period:
+
+```{r}
+# Weekly format
+  # Station / Month / days / Covariates / Species      
+  tmp <- row_lookup
+  # Simplify the date to year-week
+  tmp$date <- strftime(tmp$date, format = "%Y-W%U")
+  # The way this is coded is the counter W01 starts at the first Sunday of the year, everything before that is W00. Weeks do not roll across years.
+  
+  # Calculate the number of days in each week  
+  week_obs <- tmp %>% 
+      group_by(location,date ) %>%
+      summarise(days = n())
+  
+  # Convert to a data frame
+  week_obs <- as.data.frame(week_obs)
+  
+  # Add species columns  
+  week_obs[, levels(ind_dat$species_common_name)] <- NA
+  
+  # Duplicate for counts
+  week_count <- week_obs
+  
+  # For each week, count the number of individuals/observations
+  for(i in 1:nrow(week_obs))
+    {
+      tmp <- ind_dat[ind_dat$location==week_obs$location[i] & strftime(ind_dat$image_date_time, format = "%Y-W%U")== week_obs$date[i],]
+      
+      tmp_stats <- tmp %>%  group_by(species_common_name, .drop=F) %>% summarise(obs=n(), count=sum(animal_count))
+      
+      week_obs[i,as.character(tmp_stats$species_common_name)] <- tmp_stats$obs
+      week_count[i,as.character(tmp_stats$species_common_name)] <- tmp_stats$count
+      
+    }
+
+write.csv(week_obs, paste0("Processed_Data/WildCo/","_TDN_min_independent_weekly_observations.csv"), row.names = F) 
+
+write.csv(week_count, paste0("Processed_Data/WildCo/","_TDN_min_independent_weekly_counts.csv"), row.names = F) 
+```
+
+11 & 12: A ‘site_day x species’ matrix of the number of independent detections and species counts across for each day a station was active in the study period:
+
+```{r}
+# Daily format
+  # Station / Month / days / Covariates / Species      
+  tmp <- row_lookup
+  tmp$days <- 1
+  # Add species columns  
+  tmp[, levels(ind_dat$species_common_name)] <- NA
+  
+  day_obs <- tmp
+  day_count <- tmp
+# For each week, count the number of individuals/observations
+  for(i in 1:nrow(day_obs))
+    {
+      tmp <- ind_dat[ind_dat$location==day_obs$location[i] & strftime(ind_dat$image_date_time, format = "%Y-%m-%d")== day_obs$date[i],]
+      
+      tmp_stats <- tmp %>%  group_by(species_common_name, .drop=F) %>% summarise(obs=n(), count=sum(gc_tag))
+      
+      day_obs[i,as.character(tmp_stats$species_common_name)] <- tmp_stats$obs
+      day_count[i,as.character(tmp_stats$species_common_name)] <- tmp_stats$count
+        
+      
+    }
+write.csv(day_obs, paste0("Processed_Data/WildCo/","_TDN_min_independent_daily_observations.csv"), row.names = F) 
+
+write.csv(day_count, paste0("Processed_Data/WildCo/","_TDN_min_independent_daily_counts.csv"), row.names = F) 
+```
+
+## 4.6.1 Final data check
+
+Finally, as a last check that our code is creating robust analysis data frames, we check if the observations/counts are the same across each temporal scale (total/monthly/weekly/daily). Check this using the following tables.
+
+Observations
+```{r}
+#compare independent detections across all species
+#read in df's created in 1c. wildRtrax.R
+total_obs<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_full.csv")
+mon_obs<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_month.csv")
+week_obs<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_week.csv")
+day_obs<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_day.csv")
+
+tmp <- cbind(data.frame("Time"=c("Total", "Monthly", "Weekly", "Daily")),
+rbind(colSums(total_obs[,3:ncol(total_obs)]),
+colSums(mon_obs[,5:ncol(mon_obs)]),
+colSums(week_obs[,5:ncol(week_obs)]),
+colSums(day_obs[,6:ncol(day_obs)])  ))
+
+tmp %>%
+  kbl() %>%
+  kable_styling(full_width = T) %>%
+  column_spec(1, bold = T, border_right = T)%>% 
+  kableExtra::scroll_box(width = "100%")
+
+#compare independent detections across mammals
+#read in df's created in 1c. wildRtrax.R
+total_obs_mam<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_full_mam.csv")
+mon_obs_mam<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_month_mam.csv")
+week_obs_mam<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_week_mam.csv")
+day_obs_mam<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_day_mam.csv")
+
+tmp <- cbind(data.frame("Time"=c("Total", "Monthly", "Weekly", "Daily")),
+rbind(colSums(total_obs_mam[,3:ncol(total_obs_mam)]),
+colSums(mon_obs_mam[,5:ncol(mon_obs_mam)]),
+colSums(week_obs_mam[,5:ncol(week_obs_mam)]),
+colSums(day_obs_mam[,6:ncol(day_obs_mam)])  ))
+
+tmp %>%
+  kbl() %>%
+  kable_styling(full_width = T) %>%
+  column_spec(1, bold = T, border_right = T)%>% 
+  kableExtra::scroll_box(width = "100%")
+
+#compare independent detections across focal sp
+#read in df's created in 1c. wildRtrax.R
+total_obs_focal<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_full_focal.csv")
+mon_obs_focal<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_month_focal.csv")
+week_obs_focal<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_week_focal.csv")
+day_obs_focal<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_day_focal.csv")
+
+tmp <- cbind(data.frame("Time"=c("Total", "Monthly", "Weekly", "Daily")),
+rbind(colSums(total_obs_focal[,3:ncol(total_obs_focal)]),
+colSums(mon_obs_focal[,5:ncol(mon_obs_focal)]),
+colSums(week_obs_focal[,5:ncol(week_obs_focal)]),
+colSums(day_obs_focal[,6:ncol(day_obs_focal)])  ))
+
+tmp %>%
+  kbl() %>%
+  kable_styling(full_width = T) %>%
+  column_spec(1, bold = T, border_right = T)%>% 
+  kableExtra::scroll_box(width = "100%")
+```
+
+Counts
+
+Can create these dataframes in 1c. wildRtrax.R by changing wt_summarise function
+```{r}
+tmp <- cbind(data.frame("Time"=c("Total", "Monthly", "Weekly", "Daily")),
+rbind(colSums(total_count[,2:ncol(total_count)]),
+colSums(mon_count[,3:ncol(mon_count)]),
+colSums(week_count[,3:ncol(week_count)]),
+colSums(day_count[,3:ncol(day_count)])  ))
+
+tmp %>%
+  kbl() %>%
+  kable_styling(full_width = T) %>%
+  column_spec(1, bold = T, border_right = T)%>% 
+  kableExtra::scroll_box(width = "100%")
+```

@@ -1,0 +1,1173 @@
+```{r setup and tests, include=FALSE}
+
+## README FIRST ##
+#Read and run this chunk of code line by line in the R Console (do not press knit) - there are some questions below which you will have to answer and some logic tests to complete. Once you are happy that the conditions have been satisfied, hit 'knit' above. 
+
+#modified for TDN by Eric Jolin
+#ejolin@alumni.uoguelph.ca
+
+# Load required packages
+
+library(leaflet)
+library(dplyr)
+library(colortools)
+library(corrplot)
+library(lubridate)
+library(sf)
+library(tmap)
+library(stringr)
+library(tidyr)
+library(viridis)
+###########NOTE: Need to find replacement for wheel function from colortools
+
+# Load your data [change the files paths to your data locations]
+# img - image data (including blank images)
+# dat - detection data (img, but excluding blank images)
+# eff - deployment data (effort)
+# sta - station covariates
+# ind - independent detection data
+# TDN - shapefile outline of the study area
+# spatdata - independent detections joined spatially with lat longs
+
+project<-"TDN"
+independent <- 30 # what threshold did you use (in minutes) for independent detections?
+
+img <- read.csv("Processed_Data/TDN_CAM_Detection_Data_v14.csv", header=T)
+img$species_rank<-as.factor(img$species_rank)
+img$species_common_name<-as.factor(img$species_common_name)
+summary(img$species_rank)
+summary(img$species_common_name)
+# drop detections that aren't ID-ed to at least the species level:
+dat<-droplevels(img[img$species_rank %in% c("Species","Subspecies"),])
+
+#drop non-MAMMALIAN detections, we don't want birds mucking things up in exploration
+dat<-droplevels(dat[dat$species_class %in% "Mammalia",])
+#OR DO WE? Could be good to have generic ptarmigans and grouse included as important prey items.
+
+#drop Humans from the analysis
+dat<-subset(dat,species_common_name != "Human")
+levels(dat$species_common_name)
+dat$species_common_name<-factor(dat$species_common_name)
+
+summary(dat$species_common_name)
+
+eff <- read.csv("Processed_Data/TDN_CAM_Deployment_Data_v14.csv", header=T)
+
+sta <- read.csv("Processed_Data/TDN_camera_locations_and_covariates_v14.csv", header=T)
+sta <- filter(sta, cam_data == T)
+str(sta)
+
+ind <- read.csv("Processed_Data/TDN_CAM_Independent_Detections_v14.csv", header=T)
+str(ind)
+unique(dat$species_common_name)
+ind<-droplevels(ind[ind$species_common_name %in% unique(dat$species_common_name),])
+
+
+TDN <- st_read("Spatial/Boundary_TDN/TDN_Boundary.shp")
+TDN <- st_transform(TDN, crs = 3580)
+
+spat_cov_data=st_read("Processed_Data/TDN_camera_locations_and_covariates_v14.csv",
+        options=c("X_POSSIBLE_NAMES=longitude","Y_POSSIBLE_NAMES=latitude"))
+
+#should be using something other than my covariate list for locations
+
+spatdata<- merge(spat_cov_data, ind, by = "location")
+
+spatdata$species_common_name<-as.factor(spatdata$species_common_name)
+spatdata$location<-as.factor(spatdata$location)
+
+
+# Timezone [Use UTC if your cameras do not correct for daylight saving time, if they do use the timezone where the data was collected]
+tz <- "UTC"
+
+# Set a single categorical variable of interest from station covariates for summary graphs. If you do not have an appropriate category use "Project.ID".
+category <- "project"
+
+# Define a colour from the R options to base the colourscheme
+colour <- "lightseagreen"
+
+
+
+## DATA TESTS ##
+
+
+# This code will not work unless your data passes the following checks
+ 
+# 2) All dates must be in YYYY-MM-DD in 'eff' and YYYY-MM-DD HH:MM:SS in 'dat' 
+# If the following return NA, change your formatting
+strptime(eff$deployment_begin_date[1], "%Y-%m-%d", tz="UTC")
+strptime(dat$date_detected[1], "%Y-%m-%d %H:%M:%S", tz="UTC")
+
+# 3) the dates in 'eff$deployment_end_date' must be the when the camera fails, not when you check the camera. If the camera fails (due to damage or full sd card), use the last day it functions here.  
+
+# 4) Ensure your species names are consistent - check in the list below
+table(dat$species_common_name)
+
+# 5) Ensure Number.of.Animals doesn't have any non-numeric data in! The following should return TRUE
+is.numeric(dat$count)
+
+# 6) ensure all deployment dates are before retrieval dates for each deployment
+# Logic = are the stations active for 0 or more days -> all should read TRUE
+table((strptime(eff$deployment_end_date, "%Y-%m-%d", tz="UTC")-strptime(eff$deployment_begin_date, "%Y-%m-%d", tz="UTC"))>=0)
+
+# 7) Do you have lat/long data for all of your sites you have effort data for? If yes, the value should be 0
+length(setdiff(eff$location, sta$location))
+# If length > 0, then you have some data missing!
+
+# If all of the above is satisfied -> press 'Knit' above ^
+
+```
+#NOTE: Need to find replacement function for colortools
+#NOTE: need to figure out how to keep upland birds
+
+```{r non-adjustable options, echo=F, include=F}
+
+# Prepare dates
+eff$deployment_begin_date <- as.POSIXct(strptime(eff$deployment_begin_date, "%Y-%m-%d", tz ))
+eff$deployment_end_date <- as.POSIXct(strptime(eff$deployment_end_date, "%Y-%m-%d", tz ))
+
+eff$Days <- as.numeric(round(difftime(eff$deployment_end_date, eff$deployment_begin_date, units="days"),1))
+
+dat$image_date_time <- as.POSIXct(strptime(dat$image_date_time, "%Y-%m-%d %H:%M:%S", tz ))
+
+# Count the number of camera stations
+n.stat <- length(unique(eff$location))
+n.stat
+
+#count the number of camera sites
+n.site <- length(unique(spatdata$location_site))
+n.site
+
+# Generate colours to display the category levels - R needs them as a factor
+sta$location<-as.factor(sta$location)
+#sta$project <- as.factor(sta$project)
+col.cat <- wheel(colour, num = length(levels(sta[,"location"]))) #need to find alternative package to set colours
+sta$Cols <- col.cat[sta[,"location"]]
+
+# How big should the figures be
+eff.height <- 8
+if(length(unique(eff$location))>80)
+   {
+     eff.height <- length(unique(eff$location))/10
+   }
+
+sp.height <- 7
+if(length(unique(dat$Species))>20)
+   {
+     sp.height <- 7+(length(unique(dat$Species))/8)
+   }
+
+
+```
+
+
+# `r project` Project
+
+### Camera locations
+
+To date there have been camera deployments at `r n.stat` unique locations.
+
+```{r map, echo=F}
+
+m <- leaflet() %>%
+  addProviderTiles(providers$Esri.WorldImagery, group="Satellite") %>%  # Add satellite data
+  addProviderTiles(providers$Esri.WorldTopoMap, group="Base") %>%     
+  addCircleMarkers(lng=sta$longitude, lat=sta$latitude,
+                   color=sta$Cols,
+                   popup=paste(sta$location, sta[,"project"])) %>%
+ addLegend("bottomleft", colors = col.cat,  labels = levels(sta[,"project"]),
+    title = category,
+    labFormat = labelFormat(prefix = "$"),
+    opacity = 1
+  ) %>%
+  # Layers control
+  addLayersControl(
+    baseGroups = c("Satellite", "Base"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+m
+
+
+```
+
+### Camera activity through time
+
+####Outliers
+One outlier at BMS-CRU-004-01 is incorrect. Fixed in CMI workshop code later on in this script. Second outlier caused by camera which wasn't retrieved until 2023.
+
+#####Update: 27/10/2023: Filtered outliers in previous script immediately after downloading raw data from WT.
+
+The `r n.stat` stations have resulted in a total of `r as.character(round(sum(eff$Days, na.rm=T),0))` camera days (mean = `r round(mean(aggregate(Days~location, data=eff,  FUN=sum, na.rm=T)$Days),1)` days per station; min = `r round(min(aggregate(Days~location, data=eff,  FUN=sum, na.rm=T)$Days),1)`; max = `r round(max(aggregate(Days~location, data=eff,  FUN=sum, na.rm=T)$Days),1)`).The daily break down of camera activity is as follows:
+
+```{r activity, echo=F, fig.height=eff.height}
+
+# Adjust layout
+par(mar=c(2,6,1,1))
+plot(c(min(eff$deployment_begin_date, na.rm=T), max(eff$deployment_end_date, na.rm=T)), c(1,n.stat), las=1, ylab="", xlab="", type="n", yaxt="n")
+
+# Have the first station plot at the top 
+plot.order <- rev(unique(eff$location))
+
+axis(2, at= 1:n.stat, labels= plot.order, las=1, cex.axis=.7)
+#mtext("Camera Deployment ID", 2, 4)
+# Make lines for each of the cameras
+for(i in 1:length(plot.order))
+{
+  abline(h=i, col=rgb(0,0,0,0.1))
+  tmp <- eff[eff$location==plot.order[i],]
+  for(j in 1:nrow(tmp))
+    {
+      lines(c(tmp$deployment_begin_date[j],
+                       tmp$deployment_end_date[j]),
+            c(i,i), lwd=2)
+    }
+  
+}
+
+```
+
+Figure 2: Where black lines denote a camera which is active, white space indicates cameras which are inactive.
+
+## Raw camera detections per station
+
+To date, there have been `r nrow(img)` image classifications, `r nrow(dat)` of which are classified as containing identified species (`r round((nrow(dat)/nrow(img))*100,1)`%).
+
+Of the detections which have been identified, there are `r length(levels(factor(dat$common_name)))` species.
+
+```{r captures, echo=F, fig.height=sp.height}
+layout(matrix(c(1,1,2), 1, 3, byrow = TRUE))
+det.sum.total <- as.data.frame(count(dat, species_common_name))
+det.sum.total <- det.sum.total[order(det.sum.total$n),]
+
+par(mar=c(5,16,1,1))
+barplot(det.sum.total$n, names.arg = paste0(det.sum.total$species_common_name, 
+                                           " (n =", det.sum.total$n,")")   , las=1, cex.names=1.2, cex.lab=1.2, xlab="Total raw detections", horiz=T)
+i <-1
+for(i in 1:nrow(det.sum.total))
+{
+  tmp <- subset(dat, species_common_name==det.sum.total$species_common_name[i])
+  det.sum.total$Locations[i] <- length(unique(tmp$location))
+}
+par(mar=c(5,1,1,1))
+
+barplot(det.sum.total$Locations/n.stat, las=1, cex.names=1.2, cex.lab=1.2, xlab="Proportion of cameras detected", horiz=T, xlim=c(0,1))
+abline(v=1, lty=2)
+
+```
+
+## Raw camera detections per site
+
+Modified code from above to try to get site level detections rather than station above.
+
+```{r captures, echo=F, fig.height=sp.height}
+layout(matrix(c(1,1,2), 1, 3, byrow = TRUE))
+det.sum.total.site <- as.data.frame(count(dat, species_common_name))
+det.sum.total.site <- det.sum.total.site[order(det.sum.total.site$n),]
+
+par(mar=c(5,16,1,1))
+barplot(det.sum.total.site$n, names.arg = paste0(det.sum.total.site$species_common_name, 
+                                           " (n =", det.sum.total.site$n,")")   , las=1, cex.names=1.2,cex.lab=1.2, xlab="Total raw detections", horiz=T)
+i <-1
+for(i in 1:nrow(det.sum.total.site))
+{
+  tmp <- subset(spatdata, species_common_name==det.sum.total.site$species_common_name[i])
+  det.sum.total.site$Locations[i] <- length(unique(tmp$location_site))
+}
+par(mar=c(5,1,1,1))
+
+barplot(det.sum.total.site$Locations/n.site, las=1, cex.names=1.2,cex.lab=1.2, xlab="Proportion of clusters detected", horiz=T, xlim=c(0,1))
+abline(v=1, lty=2)
+
+```
+
+## Detection check
+
+The following plot helps you determine if you have detections occurring outside of the times cameras are active. *Important note* You can still get detections outside of the activity period if you have decided that the field of view was shifted and the data is un-comparable to that which was collected earlier.
+
+```{r, include=F}
+# Make species colour codes
+tmp3 <- data.frame("common_name"=unique(dat$species_common_name),"Colour"= wheel("lightseagreen", num = length(unique(dat$species_common_name))))
+
+```
+
+```{r detecion summary, echo=F, message=F, warning=F}
+
+# To do this make a plot dataframe
+tmp4 <- data.frame("location"=plot.order, "Plot.grp"=ceiling(1:length(unique(eff$location))/20))
+
+eff <- left_join(eff,tmp4, by="location")
+
+j <- 1
+i <- 1
+for(j in 1:length(unique(eff$Plot.grp)))
+{
+    layout(matrix(c(1,1,1,2), 1, 4, byrow = TRUE))
+    par(mar=c(2,8,1,1))
+    
+    plot(c(min(eff$deployment_begin_date, na.rm=T), max(eff$deployment_end_date, na.rm=T)),      c(1,length(unique(eff$location[eff$Plot.grp==j]))), las=1, ylab="", xlab="", type="n", yaxt="n")
+    
+    axis(2, at= 1:length(unique(eff$location[eff$Plot.grp==j])), labels= unique(eff$location[eff$Plot.grp==j]), las=1, cex.axis=1)
+    # Make lines for each of the cameras
+    for(i in 1:length(unique(eff$location[eff$Plot.grp==j])))
+    {
+      abline(h=i, col=rgb(0,0,0,0.1))
+      tmp <- eff[eff$location==unique(eff$location[eff$Plot.grp==j])[i],]
+      
+      tmp2 <- dat[dat$location==tmp$location[1],]
+      tmp2 <- left_join(tmp2, tmp3)
+      points(tmp2$date_detected, rep(i,nrow(tmp2)), pch="|", col= tmp2$Colour)
+    
+      for(k in 1:nrow(tmp))
+        {
+          lines(c(tmp$deployment_begin_date[k],
+                           tmp$deployment_end_date[k]),
+                c(i,i), lwd=2)
+        }
+      }
+    par(mar=c(0,0,1,0))
+    plot.new()
+    legend("topleft", legend=tmp3$common_name, fill=tmp3$Colour, xpd=TRUE, cex=1.1 )
+
+}
+
+```
+
+## Independent Detections per station
+
+Using an independence threshold of `r independent` minutes, the number of detections is reduced to `r nrow(ind)`. The rest of the analyses are conducted with this data. The summary of detections is as follows:
+
+```{r ind captures, echo=F, fig.height=sp.height, eval=T}
+
+layout(matrix(c(1,1,2), 1, 3, byrow = TRUE))
+det.sum.total <- as.data.frame(count(ind, species_common_name))
+det.sum.total <- det.sum.total[order(det.sum.total$n),]
+
+par(mar=c(5,16,1,1))
+barplot(det.sum.total$n, names.arg = paste0(det.sum.total$species_common_name,
+                                           " (n =", det.sum.total$n,")"), las=1, cex.names=1.2,cex.lab=1.2, xlab="Total independent detections", horiz=T,cex.axis=1.2)
+i <-1
+for(i in 1:nrow(det.sum.total))
+{
+  tmp <- subset(ind, species_common_name==det.sum.total$species_common_name[i])
+  det.sum.total$Locations[i] <- length(unique(tmp$location))
+}
+par(mar=c(5,1,1,1))
+
+barplot(det.sum.total$Locations/n.stat,las=1, cex.names=1.2,cex.lab=1.2, xlab="Proportion of cameras detected",cex.axis=1.2, horiz=T, xlim=c(0,1))
+abline(v=1, lty=2)
+
+```
+
+## Independent Detections per site
+
+modified from station code above 
+
+###NOTE: this is still using independent detection data amongst individual cameras, rather than independent detections at the site level 
+
+```{r ind captures, echo=F, fig.height=sp.height, eval=T}
+
+layout(matrix(c(1,1,2), 1, 3, byrow = TRUE))
+det.sum.total.site <- as.data.frame(count(ind, species_common_name))
+det.sum.total.site <-det.sum.total.site[order(det.sum.total.site$n),]
+
+par(mar=c(5,16,1,1))
+barplot(det.sum.total.site$n, names.arg = paste0(det.sum.total.site$species_common_name,
+                                           " (n =", det.sum.total.site$n,")"), las=1, cex.names=1.2, cex.lab=1.2, cex.axis=1.2, xlab="Total independent detections", horiz=T)
+i <-1
+for(i in 1:nrow(det.sum.total))
+{
+  tmp <- subset(spatdata, species_common_name==det.sum.total.site$species_common_name[i])
+  det.sum.total.site$Locations[i] <- length(unique(tmp$location_site))
+}
+par(mar=c(5,1,1,1))
+
+barplot(det.sum.total.site$Locations/n.site,las=1, cex.names=1.2, xlab="Proportion of clusters detected",cex.lab=1.2, cex.axis=1.2, horiz=T, xlim=c(0,1))
+abline(v=1, lty=2)
+
+```
+## Species metadata
+
+Of the images classified as containing animals, the proportion of photographs assigned to the following catagories are as follows:
+
+### Sex
+
+```{r sex, echo=F, include=F}
+
+
+b<-ind %>% group_by(species_common_name, sex_class) %>% summarise(n = sum(gc_tag))
+d<-t(spread(b, sex_class, n))
+e<-as.data.frame(d[2:4,])
+names(e)<-d[1,]
+e[is.na(e)]<-0
+e
+str(e)
+
+tmp <- e
+for (i in 1: ncol(e)){
+  tmp[,i] <- as.numeric(e[,i])
+}
+
+
+
+ind[,"sex_class"] <- factor(ind[,"sex_class"])
+#cols <- wheel("lightseagreen", num = length(levels(dat[,"sex_class"])))
+
+data_percentage <- apply(tmp, 2, function(x){x*100/sum(x,na.rm=T)})
+
+```
+
+```{r sex plot, echo=F, fig.height=sp.height}
+layout(matrix(c(1,1,1,2), 1, 4, byrow = TRUE))
+par(mar=c(5,10,1,1))
+barplot(data_percentage , border="white",col= rainbow(length(levels(dat[,"sex_class"]))), ylab="", las=1, xlab="% of observations", cex.names=0.7, horiz=2)
+par(mar=c(0,0,4,0))
+plot.new()
+legend("topleft", legend=row.names(tmp), xpd=TRUE, fill= rainbow(length(levels(dat[,"sex_class"]))),cex=1.1 )
+```
+
+### Age
+
+```{r age, echo=F, include=F}
+
+str(ind)
+
+b<-ind %>% group_by(species_common_name, age_class) %>% summarise(n = sum(gc_tag))
+d<-t(spread(b, age_class, n))
+e<-as.data.frame(d[2:4,])
+names(e)<-d[1,]
+e[is.na(e)]<-0
+e
+str(e)
+
+tmp <- e
+for (i in 1: ncol(e)){
+  tmp[,i] <- as.numeric(e[,i])
+}
+
+
+ind[,"age_class"] <- factor(ind[,"age_class"])
+#cols <- wheel("lightseagreen", num = length(levels(dat[,"age_class"])))
+
+
+data_percentage <- apply(tmp, 2, function(x){x*100/sum(x,na.rm=T)})
+
+```
+
+```{r age plot, echo=F, fig.height=sp.height}
+layout(matrix(c(1,1,1,2), 1, 4, byrow = TRUE))
+par(mar=c(5,10,1,1))
+barplot(data_percentage , border="white",col= rainbow(length(levels(dat[,"age_class"]))), ylab="", las=1, xlab="% of observations", cex.names=0.7, horiz=2)
+par(mar=c(0,0,4,0))
+plot.new()
+legend("topleft", legend=row.names(tmp), fill=rainbow(length(levels(dat[,"age_class"]))), xpd=TRUE, cex=1.1 )
+
+```
+
+## Group size distribution
+
+###NOTE: caribou/muskox presence absence data means innaccurate plot, included option code to filter them out
+
+```{r group size, echo=F, eval=T,fig.height=sp.height}
+
+ind2<-ind %>%
+  filter(!species_common_name == "Muskox") %>% 
+  filter(!species_common_name == "Caribou") %>% 
+  group_by(event_id, species_common_name) %>%
+  summarise(gc = sum(gc_tag))
+
+
+par(mfrow=c(1,1))
+par(mar=c(5,10,1,1))
+plot(jitter(as.numeric(as.factor(ind2$species_common_name)))~jitter(as.numeric(ind2$gc)), xlab="Minimum group size", yaxt="n", las=1, ylab="")
+axis(2, 1:length(unique(ind2$species_common_name)), labels=levels(as.factor(ind2$species_common_name)), las=2, cex.axis=1)
+
+```
+
+# Station-level species covariance
+
+This plot shows the covariance between different species at the station level for species with \>5 unique detections. For example, if you typically get lots of caribou and bears at the same station, they will have positive covariance. If you get caribou where you don't get bears, they will have negative covariance.
+
+##NOTE: need to reconfigure for site level covariance and also to potentially include ptarmigan/grouse as important prey species. Can't think of any other potentially important birds. Maybe nesting waterfowl but most images are on water or flying not nesting. 
+
+```{r covariance, echo=F, fig.height=sp.height,fig.width=sp.height, eval=T}
+par(mfrow=c(1,1))
+tmp <- as.data.frame.matrix(table(ind$location, ind$species_common_name))
+tmp <- tmp[colSums(tmp)>5]
+M <- cor(tmp)
+
+corrplot(M, method="color", #col=matrix(col(200)),
+         type="upper", order="hclust",
+         # addCoef.col = "black", # Add coefficient of correlation
+         tl.col="black", tl.srt=45, tl.cex = 1, #Text label color and rotation
+         # Combine with significance
+         # p.mat = p.mat, sig.level = 0.01, insig = "blank",
+         # hide correlation coefficient on the principal diagonal
+         diag=FALSE
+         )
+
+```
+
+Rough conclusions:
+- Grizzly bear most positively correlated with arctic ground squirrel. Important food source so this is expected but could also be from knocked over cameras if Out of Range images are included in this
+- Grizzly/Moose slight positive; Grizzly/Muskox slight negative; tundra moose targeted by griz?
+- Wolf/Grizzly slight positive
+- Wolf/Moose and Wolf/Muskox positive
+- Caribou/Wolf and Caribou/Grizzly slight positive 
+- Caribou/Moose and Caribou/Muskox negative correlations
+  -could just be caused by taiga moose/muskox
+- Moose/Muskox slight positive correlation
+
+- Caribou avoiding heterospecific ungulates (negative correlation) but still positively correlated with predators. Predators positively correlated with almost all ungulates (except grizzly muskox).
+
+- Lynx most strongly correlated with Wolf, but also SSHare and Porcupine as expected, as well as other boreal species. Lynx/Wolf could be because of wolf den site camera.
+- BBear positively correlated with Muskox/Moose and all boreal species
+- Fairly strong positive correlation between Lynx/BBear/Wolf
+
+# Site-level species covariance
+
+Modified from code above
+
+##NOTE: not sure if this is actually working or if you need a new independent detection dataframe calculated based on clusters of cameras
+
+```{r covariance, echo=F, fig.height=sp.height,fig.width=sp.height, eval=T}
+tmp5 <- merge(ind, spat_cov_data,by="location")
+
+par(mfrow=c(1,1))
+tmp <- as.data.frame.matrix(table(tmp5$location_site, tmp5$species_common_name))
+tmp <- tmp[colSums(tmp)>5]
+M <- cor(tmp)
+
+corrplot(M, method="color", #col=matrix(col(200)),
+         type="upper", order="hclust",
+         # addCoef.col = "black", # Add coefficient of correlation
+         tl.col="black", tl.srt=45, tl.cex = 1, #Text label color and rotation
+         # Combine with significance
+         # p.mat = p.mat, sig.level = 0.01, insig = "blank",
+         # hide correlation coefficient on the principal diagonal
+         diag=FALSE
+         )
+
+```
+
+# Station-level temporal plots
+
+### Summary
+
+####NOTE: How can I change to monthly detection rates?
+
+Across all sites and species:
+
+```{r calculate monthly data summaries, echo=F, eval=T, include= F}
+# Capture rates through time
+focal.sp <- as.character(det.sum.total[det.sum.total$n>10,]$species_common_name)
+focal.sp <- focal.sp[order(focal.sp)]
+# Remove any blanks
+focal.sp <- focal.sp[focal.sp!=""]
+
+# We need to know how many detections there are in each month -> create a row lookup
+# This is just a list of every day a camera was active.
+
+tmp <- eff[is.na(eff$deployment_end_date)==F,]
+daily.lookup <- list()
+for(i in 1:nrow(tmp))
+{
+  if(as.Date(tmp$deployment_begin_date[i])!=as.Date(tmp$deployment_end_date[i]))
+  {
+    daily.lookup[[i]] <- data.frame("Date"=seq(as.Date(tmp$deployment_begin_date[i])+1, as.Date(tmp$deployment_end_date[i]), by="days"), "location"=tmp$location[i])
+  }
+}
+row.lookup <- do.call(rbind, daily.lookup)
+
+# Now determine capture rates
+# Make a data frame by month and year
+mon.dat <- unique(substr(ind$image_date_time, 1,7))
+mon.dat <- data.frame("Month"=mon.dat[order(mon.dat)], "Effort"= NA)
+mon.dat[as.character(focal.sp)] <- NA
+i<-1
+for(i in 1:nrow(mon.dat))
+{
+  mon.dat$Effort[i] <- nrow(subset(row.lookup, substr(row.lookup$Date,1,7)==mon.dat$Month[i]))
+  mon.dat$Total.CR[i] <- (nrow(subset(ind, substr(ind$image_date_time,1,7)==mon.dat$Month[i]))/mon.dat$Effort[i])*100
+}
+
+for(i in 1:length(focal.sp))
+{
+  for(j in 1:nrow(mon.dat))
+  {
+    tmp <- subset(ind, species_common_name==as.character(focal.sp)[i] & substr(ind$image_date_time,1,7)==mon.dat$Month[j])
+    mon.dat[j, as.character(focal.sp[i])] <- (nrow(tmp)/mon.dat$Effort[j])*100
+  }
+}
+
+mon.dat$timestamp <- strptime(paste0(as.character(mon.dat$Month),"-15"), "%Y-%m-%d")
+
+# Remove any silly values 
+mon.dat <- mon.dat[is.infinite(mon.dat$Total.CR)==F,]
+
+```
+
+```{r overall CR, echo=F, fig.height=4, eval=T}
+
+par(mfrow=c(1,2))
+
+xtick <- as.POSIXct(paste0(year(mon.dat$timestamp), "-", str_pad(month(mon.dat$timestamp), 2, side = "left", pad = "0"), "-01" ))
+
+
+
+plot(mon.dat$timestamp, mon.dat$Effort, ylab="Monthly Effort (days)", xlab="Date", type="l", las=2)
+points(mon.dat$timestamp, mon.dat$Effort, pch=19, col=rgb(0,0,0,0.4))
+axis(side=1, at=xtick, labels = FALSE)
+
+# Overall capture rate
+plot(mon.dat$timestamp, mon.dat$Total.CR, ylab="Monthly Capture Rate", xlab="Date", type="l", las=2, ylim=c(0, max(mon.dat$Total.CR)))
+points(mon.dat$timestamp, mon.dat$Total.CR, pch=19, col=rgb(0,0,0,0.4))
+axis(side=1, at=xtick, labels = FALSE)
+
+```
+
+- Low capture rates in Aug and Sept 2021 could be caused by lower survey effort. 
+- July 2021 capture rate seems too high given low effort, could be caused by very high capture rate of SSHares in July 2021 (all other mammals are near 0 in July 2021). 
+- Initial capture rate spikes in August 2021 could be caused by human scent or novelty of CT acting as an attractant. 
+- Aug 2021 is ~1/3 of the effort compared to Aug 2022
+- Really would've been nice to have a multi year study...
+
+# Species-specific temporal trends
+
+####NOTE: How can I change to monthly detection rates?
+
+Species level variation in monthly capture rates, across all years, are as follows:
+
+```{r, echo=F, eval=T}
+#par(mfrow=c(2,3))
+for(i in 1:length(focal.sp))
+{
+  plot(mon.dat$timestamp, mon.dat[,as.character(focal.sp)[i]], ylab="Monthly Capture Rate", xlab="", type="l", las=2, main=focal.sp[i])
+  points(mon.dat$timestamp, mon.dat[,as.character(focal.sp)[i]], pch=19, col=rgb(0,0,0,0.4))
+  axis(side=1, at=xtick, labels = FALSE )
+}
+
+```
+
+# Species-specific temporal trends, grouped by month
+
+####NOTE: This is pooled monthly data but since we only have a small amount of monthly overlap, it would be better if the x-axis was just a calendar
+
+Species level variation in monthly capture rates, with months of all years pooled, are as follows:
+
+```{r make it a barplot instead and group months, echo = F}
+#par(mfrow=c(2,3))
+
+monthly <- mon.dat %>% mutate(across(`Arctic Ground Squirrel`:`Wolverine`, ~.x *Effort/100),
+                   month = month.abb[as.numeric(str_sub(Month, 6:6))]) %>%
+  group_by(month) %>%
+  summarise(effort = sum(Effort), across(`Arctic Ground Squirrel`:`Wolverine`, ~sum(.x))) %>%
+  mutate(across(`Arctic Ground Squirrel`:`Wolverine`, ~.x / effort * 100))
+
+monthly$month <- factor(monthly$month, levels = c("Jan","Feb","Mar","Apr","May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"))
+
+monthly<-as.data.frame(monthly)
+
+barplot(monthly$effort~monthly$month, par(las=2), ylab = "Effort (days)", xlab = "Month", main = "Overall Effort",cex.lab=1.1,cex.axis=1,cex=1.4,cex.main=1.7)
+
+for ( i in 1: length(focal.sp)){
+  barplot(monthly[,i+2] ~ monthly$month, par(las=2), ylab = "Monthly Capture Rate", main = focal.sp[i],cex.lab=1.2,cex.axis=1.1, cex.main=2.2,cex=1.5,xlab="")
+}
+
+```
+
+# Species-specific maps
+
+Gray circles are stations where there are no detections of that species. Blue circles are stations where that species was detected. The size of the circle increases with the number of independent detections, including group size.
+
+###NOTE: I want to do this but without group size for the time being
+
+###NOTE: in spatdata, the group_count column is currently filled with the FOV tag (i.e. within, out of range, etc). Need to fix this. Temporary solution, change group_count to gc_tag in script below which corresponds to count of animals in an individual tag not the actual group count. The maps produced by this temporary script are a bit wacky (very large circles for caribou herds). Multiple circles overlap when more than one camera at a site had detections. 
+
+####UPDATE:ind spreadsheet has this error and needs to be fixed in the previous standardization script
+
+```{r, eval=T, echo=F, message=FALSE, warning=FALSE}
+
+# get rid of NA counts because they F up the script here
+spatdata<-spatdata[!is.na(spatdata$gc_tag),]
+species<-unique(spatdata$species_common_name)
+
+i<-1
+
+for (i in 1:length(species)){
+  tmp<-spatdata[spatdata$species_common_name==species[i],]
+  tmp2<-tmp%>%group_by(species_common_name, location) %>% summarise(n= sum(gc_tag))
+  tmp2$n<-as.numeric(tmp2$n)
+  
+  x=tm_shape(TDN) +
+    tm_borders() +
+    tm_layout(
+      title = species[i],
+      title.position = c("center", "top"),
+      inner.margins = c(0.07, 0.03, 0.15, 0.03)) +
+    tm_shape(spatdata) +
+    tm_symbols(size = 0.2, col="lightgrey") +
+    tm_shape(tmp2) +
+    tm_bubbles("n",
+               col ='blue',
+               breaks = c(1, 5, 10, max(tmp$n)),
+               size.max = 10,
+               sizes.legend= c(1, 5, 10, if(max(tmp2$n)>10) max(tmp2$n))) +
+    tm_layout(legend.position = c("right","bottom"))
+    
+print(x)
+
+}
+
+```
+
+# Species-specific maps by Site
+
+modified from code above
+
+###NOTE: No idea if this is working but camera locations still show on maps rather than just the sites. Circles are MUCH larger so they're probably wrong...
+
+###NOTE: for some reason the FOV is within the "group_count" column. Replaced "group_count" with "gc_tag" below but this is a sloppy fix.
+
+###NOTE: I want to do this but without group size for the time being
+
+```{r, eval=T, echo=F, message=FALSE, warning=FALSE}
+
+# get rid of NA counts because they F up the script here
+spatdata<-spatdata[!is.na(spatdata$gc_tag),]
+species<-unique(spatdata$species_common_name)
+
+i<-1
+
+for (i in 1:length(species)){
+  tmp<-spatdata[spatdata$species_common_name==species[i],]
+  tmp2<-tmp%>%group_by(species_common_name, location_site) %>% summarise(n= sum(gc_tag))
+  tmp2$n<-as.numeric(tmp2$n)
+  
+  x=tm_shape(TDN) +
+    tm_borders() +
+    tm_layout(
+      title = species[i],
+      title.position = c("center", "top"),
+      inner.margins = c(0.07, 0.03, 0.15, 0.03)) +
+    tm_shape(spatdata) +
+    tm_symbols(size = 0.2, col="lightgrey") +
+    tm_shape(tmp2) +
+    tm_bubbles("n",
+               col ='blue',
+               breaks = c(1, 5, 10, max(tmp$n)),
+               size.max = 10,
+               sizes.legend= c(1, 5, 10, if(max(tmp2$n)>10) max(tmp2$n))) +
+    tm_layout(legend.position = c("right","bottom"))
+    
+print(x)
+
+}
+
+```
+
+#TEST TEST TEST
+##CMI Workshop Scripts
+
+###Site map - Basic
+```{r}
+m <- leaflet() %>%             # call leaflet
+        addTiles() %>%         # add the default basemap
+        addCircleMarkers(      # Add circles for stations
+          lng=sta$longitude, lat=sta$latitude) 
+m                              # return the map
+```
+
+###Site Map - Labels
+```{r}
+m <- leaflet() %>%             
+        addTiles() %>%         
+        addCircleMarkers(      
+          lng=sta$longitude, lat=sta$latitude,
+          popup=paste(sta$location)) # include a popup with the placename!
+m                              
+```
+
+###Site Map - Labels+Sat
+```{r}
+m <- leaflet() %>%             
+        addProviderTiles(providers$Esri.WorldImagery) %>% #Add Esri Wrold imagery         
+        addCircleMarkers(      
+          lng=sta$longitude, lat=sta$latitude,
+          popup=paste(sta$location)) # include a popup with the placename!
+m                              
+```
+
+###Site Map - ULTIMATE
+
+cameras not sites
+```{r}
+# First, set a single categorical variable of interest from station covariates for summary graphs. If you do not have an appropriate category use "project_id".
+category <- "wetland"
+
+# We first convert this category to a factor with discrete levels
+sta[,category] <- factor(sta[,category])
+# then use the turbo() function to assign each level a color
+col.cat <- turbo(length(levels(sta[,category])))
+# then we apply it to the dataframe
+sta$colours <- col.cat[sta[,category]]
+
+m <- leaflet() %>%
+  addProviderTiles(providers$Esri.WorldImagery, group="Satellite") %>%  
+  addTiles(group="Base") %>%     # Include a basemap option too
+  addCircleMarkers(lng=sta$longitude, lat=sta$latitude,
+                   # Co lour the markers depending on the 'habitat type'
+                   color=sta$colours,
+                   # Add a popup of the placename and feature_type together 
+                   popup=paste(sta$location, sta[,category])) %>%
+  
+  # Add a legend explaining what is going on
+  addLegend("topleft", colors = col.cat,  labels = levels(sta[,category]),
+                   title = category,
+                   labFormat = labelFormat(prefix = "$"),
+                   opacity = 1) %>%
+  
+  # add a layer control box to toggle between the layers
+  addLayersControl(
+                    baseGroups = c("Satellite", "Base"))
+
+m
+```
+
+Sites not cameras
+```{r}
+# First, set a single categorical variable of interest from station covariates for summary graphs. If you do not have an appropriate category use "project_id".
+category <- "fire30"
+
+# We first convert this category to a factor with discrete levels
+sta[,category] <- factor(sta[,category])
+# then use the turbo() function to assign each level a color
+col.cat <- turbo(length(levels(sta[,category])))
+# then we apply it to the dataframe
+sta$colours <- col.cat[sta[,category]]
+
+m <- leaflet() %>%
+  addProviderTiles(providers$Esri.WorldImagery, group="Satellite") %>%  
+  addTiles(group="Base") %>%     # Include a basemap option too
+  addCircleMarkers(lng=sta$longitude_site, lat=sta$latitude_site,
+                   # Co lour the markers depending on the 'habitat type'
+                   color=sta$colours,
+                   # Add a popup of the placename and feature_type together 
+                   popup=paste(sta$location_site, sta[,category])) %>%
+  
+  # Add a legend explaining what is going on
+  addLegend("topleft", colors = col.cat,  labels = levels(sta[,category]),
+                   title = category,
+                   labFormat = labelFormat(prefix = "$"),
+                   opacity = 1) %>%
+  
+  # add a layer control box to toggle between the layers
+  addLayersControl(
+                    baseGroups = c("Satellite", "Base"))
+
+m
+```
+
+###Check for duplicate stations
+
+```{r}
+# create a list of all the non-duplicated placenames
+camera_locs <- sta %>% 
+  dplyr::select(location, latitude, longitude) %>% 
+  unique() %>% # remove duplicated rows (rows where the placename and coordinates match)
+  st_as_sf(coords = c("longitude", "latitude"), crs = "+proj=longlat") # Convert to `sf` format
+
+# Check that there are no duplicated stations
+camera_locs[duplicated(camera_locs$placename)==T,]
+```
+
+###Check for duplicate sites
+
+```{r}
+# create a list of all the non-duplicated placenames
+site_locs <- sta %>% 
+  dplyr::select(location_site, latitude_site, longitude_site) %>% 
+  unique() %>% # remove duplicated rows (rows where the placename and coordinates match)
+  st_as_sf(coords = c("longitude_site", "latitude_site"), crs = "+proj=longlat") # Convert to `sf` format
+
+# Check that there are no duplicated stations
+site_locs[duplicated(site_locs$placename)==T,]
+```
+
+
+###Distance between cameras
+
+####NOTE: How to find distance between cameras in each cluster? More useful than stats for all cameras.
+```{r}
+# distance matrix for all cameras
+camera_dist <- st_distance(camera_locs) %>% 
+                  as.dist() %>% 
+                  usedist::dist_setNames(as.character(camera_locs$location)) %>% 
+                  as.matrix()
+
+# convert to pairwise list
+camera_dist_list <- t(combn(colnames(camera_dist), 2))
+camera_dist_list <- data.frame(camera_dist_list, dist = camera_dist[camera_dist_list]) %>% 
+                          arrange(dist) # sort descending
+
+# Duplicate and flip the stations so each one is represented on the left hand side
+camera_dist_list <- rbind(camera_dist_list, camera_dist_list[,c(2,1,3)])
+
+# keep just the closest camera for each location
+camera_dist_list <- camera_dist_list %>% 
+                  group_by(X1) %>% 
+                  slice(which.min(dist))
+summary(camera_dist_list$dist)
+```
+Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
+   27.02   302.48   578.93  4361.35   610.13 84724.54 
+
+Min distance between cameras is only 27.02m, find out which cameras these are:
+
+BIO-TDN-032-02A : BIO-TDN-032-02B
+27.01558
+
+BIO-TDN-032-03A : BIO-TDN-032-03B
+43.79968
+
+BIO-TDN-021-04 : BIO-TDN-021-7NR
+48.64840
+
+BIO-TDN-032-01A : BIO-TDN-032-01B
+99.20785
+
+###Distance between sites
+
+modified from above code 
+####NOTE: I think this worked...
+
+```{r}
+# distance matrix for all cameras
+site_dist <- st_distance(site_locs) %>% 
+                  as.dist() %>% 
+                  usedist::dist_setNames(as.character(site_locs$location_site)) %>% 
+                  as.matrix()
+
+# convert to pairwise list
+site_dist_list <- t(combn(colnames(site_dist), 2))
+site_dist_list <- data.frame(site_dist_list, dist = site_dist[site_dist_list]) %>% 
+                          arrange(dist) # sort descending
+
+# Duplicate and flip the stations so each one is represented on the left hand side
+site_dist_list <- rbind(site_dist_list, site_dist_list[,c(2,1,3)])
+
+# keep just the closest camera for each location
+site_dist_list <- site_dist_list %>% 
+                  group_by(X1) %>% 
+                  slice(which.min(dist))
+summary(site_dist_list$dist)
+```
+
+Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+   3245   10375   16096   21001   23084   84961 
+   
+Minimum Distance between clusters is over 3km. Max is almost 85km. Mean is about 21km.
+
+###Plotly map
+```{r}
+library(plotly)
+fig <- plot_ly(data = sta,                    # Specify your data frame
+               x = ~longitude, y = ~latitude, # The x and y axis columns
+               type="scatter")                # and the type of plot
+fig
+```
+
+```{r}
+library(plotly)
+fig <- plot_ly(data = sta,                    
+               x = ~longitude, y = ~latitude,
+               color=~angle_iron,              # We can specify color categories by angle iron
+               type="scatter",
+               marker=list(size=15))             # the default size is 10           
+fig
+```
+
+###Plotly camera activity figure
+
+```{r}
+# Call the plot
+p <- plot_ly()
+
+# We want a separate row for each 'placename' - so lets turn it into a factor
+eff$location <- as.factor(eff$location)
+
+# loop through each place name
+for(i in seq_along(levels(eff$location)))
+  {
+      #Subset the data to just that placename
+      tmp <- eff[eff$location==levels(eff$location)[i],]
+      # Order by date
+      tmp <- tmp[order(tmp$deployment_begin_date),]
+      # Loop through each deployment at that placename
+      for(j in 1:nrow(tmp))
+      {
+        # Add a line to 'p'
+        p <- add_trace(p, 
+                       #Use the start and end date as x coordinates
+                       x = c(tmp$deployment_begin_date[j], tmp$deployment_end_date[j]), 
+                       #Use the counter for the y coordinates
+                       y = c(i,i), 
+                       # State the type of chart
+                       type="scatter",
+                       # make a line that also has points
+                       mode = "lines+markers", 
+                       # Add the deployment ID as hover text
+                       hovertext=tmp$deployment_id[j], 
+                       # Color it all black
+                       color=I("blue"), 
+                       # Suppress the legend
+                       showlegend = FALSE)
+      }
+      
+  }
+# Add a categorical y axis
+ p <- p %>%   layout(yaxis = list(
+
+      ticktext = as.list(levels(eff$location)), 
+
+      tickvals = as.list(1:length(levels(eff$location))),
+
+      tickmode = "array"))
+
+
+p
+```
+
+####Outliers
+One outlier at BMS-CRU-004-01 is incorrect. Need to cut off BIO-TDN-029-02 at Aug 22, 2023.
+
+#####UPDATE: 27/10/2023 - Fixed in previous script immediately after data downloads
+
+Correct using following script and rerun code above
+
+```{r}
+#correct outlier at BMS-CRU-004-01 but make sure you update the deployment_id 
+#eff$deployment_begin_date[eff$deployment_id=="d821"] <- ymd("2021-08-27") 
+                                    #remember to format it as a date object
+
+#correct outlier at BIO-TDN-029-02 but make sure you update the deployment_id 
+#eff$deployment_end_date[eff$deployment_id=="d1314"] <- ymd("2022-08-22") 
+
+#eff<-subset(eff,deployment_id != c("d1315","d1316"))
+
+                                    #remember to format it as a date object
+```
+
+### Detection Check
+
+####NOTE: Use img or dat dataframe? dat excludes tags not ID'd to species level. dat dataframe does not have deployment id's though
+
+Current script basically produces same plot as last code chunk
+
+```{r}
+# Make a separate plot for each 20 stations For each 20 stations
+# To do this make a plot dataframe
+tmp <- data.frame("deployment_id"=unique(eff$deployment_id), "plot_group"=ceiling(1:length(unique(eff$deployment_id))/305))
+
+dep_tmp <- left_join(eff,tmp, by="deployment_id")
+
+for(i in 1:max(dep_tmp$plot_group))
+{  
+  # Call the plot
+  p <- plot_ly() 
+  
+  #Subset the data to just that placename
+  tmp <- dep_tmp[dep_tmp$plot_group==i,]
+  # Order by placename 
+  tmp <- tmp[order(tmp$location),]
+  
+ 
+ # Loop through each deployment at that placename
+  for(j in 1:nrow(tmp))
+    {
+        #Subset the image data
+        tmp_img <- dat[dat$deployment_id==tmp$deployment_id[j],]
+        
+        if(nrow(tmp_img)>0)
+        {
+         
+          p <- add_trace(p, 
+                       #Use the start and end date as x coordinates
+                       x = c(tmp_img$timestamp), 
+                       #Use the counter for the y coordinates
+                       y = rep(j, nrow(tmp_img)), 
+                       # State the type of chart
+                       type="scatter",
+                       # make a line that also has points
+                       mode = "markers", 
+                       # Add the deployment ID as hover text
+                       hovertext=paste(tmp_img$species_scientific_name,tmp_img$species_common_name), 
+                       # Color it all black
+                       marker = list(color = "red"), 
+                       # Suppress the legend
+                       showlegend = FALSE)
+        }
+        
+       # Add a line to 'p'
+        p <- add_trace(p, 
+                       #Use the start and end date as x coordinates
+                       x = c(tmp$deployment_begin_date[j], tmp$deployment_end_date[j]), 
+                       #Use the counter for the y coordinates
+                       y = c(j,j), 
+                       # State the type of chart
+                       type="scatter",
+                       # make a line that also has points
+                       mode = "lines", 
+                       # Add the deployment ID as hover text
+                       hovertext=tmp$deployment_id[j], 
+                       # Color it all black
+                       color=I("black"), 
+                       # Suppress the legend
+                       showlegend = FALSE)
+      }
+  # Add custom y axis labels  
+  p <- p %>%   layout(yaxis = list(
+
+      ticktext = as.list(tmp$deployment_id), 
+
+      tickvals = as.list(1:nrow(tmp)),
+
+      tickmode = "array"))
+  
+  print(p)
+      
+  
+} 
+```
+
+###Diel activity check 
+
+####NOTE: Need to rework this code to work with dat$date_detected OR need to split up img$date_detected into date:hours:minutes:seconds rather than "img$timestamp"
+
+####NOTE: Can't get this to work
+
+Use img or dat dataframe? dat excludes tags not ID'd to species level
+
+```{r}
+# First lets convert our timestamp to decimal hours
+img$hours <- hour(img$date_detected) + minute(img$date_detected)/60 + second(img$date_detected)/(60*60)
+
+# Count all of the captures
+tmp <- img %>% group_by(common_name) %>% summarize(count=n())
+
+yform <- list(categoryorder = "array",
+              categoryarray = tmp$common_name)
+
+fig <- plot_ly(x = img$hours, y = img$common_name,type="scatter",
+               height=1000, text=img$deployment_id, hoverinfo='text',
+               mode   = 'markers',
+               marker = list(size = 5,
+                             color = 'rgba(50, 100, 255, .2)',
+                             line = list(color = 'rgba(0, 0, 0, 0)',
+                                         width = 0))) %>% 
+              layout(yaxis = yform)
+fig
+```
+
+
+
+

@@ -1,0 +1,2585 @@
+---
+title: "Chapter 10 Habitat use"
+output:
+  word_document: default
+  html_document: default
+date: "2023-08-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The following script was modifed from the CBeirne CT data analysis workshop, chapter 10 habitat use.
+
+#Mixed-effects Models
+
+Camera traps are well suited for the quantification of habitat use across multiple species. To assess habitat use, we typically quantify the detection rate - the number of detections divided by the time interval of interest. As detection rates are fairly simple to estimate and conceptually simple to understand, thus their use is widespread in the camera trap literature.
+
+In its simplest form habitat use represents the number of independent events of a given species at a given camera, divided by the number of days that camera was active during that period of interest.
+
+This ‘detection rate’ is thought to reflect the habitat use of a species at a given location. Extreme care should be taken if you want to equate use with abundance or density - something we discuss a little more in the density chapter.
+
+Detection rates are typically analysed in a linear modelling framework, and come in single species and multi-species versions (see below).
+
+# Load the required packages
+
+```{r}
+# Check you have them and load them
+list.of.packages <- c("kableExtra", "tidyr", "ggplot2", "gridExtra", "dplyr", "Hmsc", "jtools", "lubridate", "corrplot", "MuMIn","stringr","sf","raster")
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+lapply(list.of.packages, require, character.only = TRUE)
+```
+
+
+#  Prepare Data
+
+```{r}
+locs <- read.csv("Processed_Data/TDN_camera_locations_and_covariates_cleaned.csv", header=T)
+
+# Convert to categorical factors
+locs <- locs %>% 
+            mutate_if(is.character,as.factor)
+
+# You should also standardize your covariates - it helps models coverage and facillitates comparison of effects sizes
+
+#NEED TO RUN THIS SO LAT/LONG DONT GET STANDARDIZED
+library(MuMIn)
+z_locs <- stdize(locs, omit.cols = c("latitude","longitude","latitude_site","longitude_site"))
+```
+
+#######################################################################################################################################################################################################################################################################################################################################
+
+# Caribou Seasons
+
+Rather than defining seasons in a community aspect using snowcover (which would be more suited to a multispecies analysis) I want to divide data by biologically relevant "caribou seasons". The problem here is that these seasons vary by date from year to year and from herd to herd based on GPS collar data. I have 2021-2022 dates for the Ahiak herd from GN reports but I don't have similar recent seasonal date ranges for the Bathurst/Beverly herds (date ranges used in many reports for the Bathurst herd are from a 2011 study). Do have telemetry data for the Bev/Bath caribou but it's clipped to the spatial extent of TDN. 
+
+Determine first obs, last obs, and number of days observed in TDN for each individual collared caribou using 2021/2022 collar data. Extracted attribute table as csv from shapefile using arcgis
+
+```{r}
+#read in collar data
+TDN_Bev_Bath_GPS<-read.csv("Raw_Data/TDN_Bev_Bath_Telemetry.csv")
+
+# Convert LoctnDt to Date format
+TDN_Bev_Bath_GPS$LoctnDt <- as.Date(TDN_Bev_Bath_GPS$LoctnDt)
+```
+
+Summarize the collar data
+```{r}
+# Group by AnimalId, Sex, and Herd, then summarize to find first date, last date, count of observations, and number of unique dates
+caribou_indv_summary <- TDN_Bev_Bath_GPS %>%
+  group_by(AnimlId, SEX, Herd) %>%
+  summarize(
+    FirstDate = min(LoctnDt),
+    LastDate = max(LoctnDt),
+    NumObservations = n(),
+    NumUniqueDates = n_distinct(LoctnDt)
+  )
+
+# Group by Herd, Sex, and then summarize to find first date, last date, count of observations, number of individuals, and number of unique dates
+herd_summary <- TDN_Bev_Bath_GPS %>%
+  group_by(Herd, SEX) %>%
+  summarize(
+    FirstDate = min(LoctnDt),
+    LastDate = max(LoctnDt),
+    NumObservations = n(),
+    NumIndividuals = n_distinct(AnimlId),
+    NumUniqueDates = n_distinct(LoctnDt)
+  )
+
+print(herd_summary)
+
+# If you want separate summaries for each Herd irrespective of sex
+herd_summary_no_sex <- TDN_Bev_Bath_GPS %>%
+  group_by(Herd) %>%
+  summarize(
+    FirstDate = min(LoctnDt),
+    LastDate = max(LoctnDt),
+    NumObservations = n(),
+    NumIndividuals = n_distinct(AnimlId),
+    NumUniqueDates = n_distinct(LoctnDt)
+  )
+```
+Herd       SEX    FirstDate  LastDate   NumObservations NumIndividuals NumUniqueDates
+  <chr>      <chr>  <date>     <date>               <int>          <int>          <int>
+1 Bathurst   Female 2021-10-27 2021-11-15              45              2             18
+2 Bathurst   Male   2021-10-29 2022-05-06             186              3             41
+3 Beverly    Female 2021-10-27 2022-01-17             707             16             83
+4 Beverly    Male   2021-10-29 2022-08-30            1049             12            215
+5 Unassigned Female 2021-11-18 2021-11-21               7              1              3
+
+Looks like the cows are only using TDN during Rut/Breeding, Fall Migration - post-breeding, and the start of Winter according to seasonal cutoff dates other Bathurst papers have used.
+
+Ahiak have slightly different seasonal cutoff dates but collared cows roughly use TDN in 2021/2022 in Late Summer, Fall migration - pre-breeding, Rut/breeding, Fall migration - post-breeding, Winter, no spring migration, then back for Summer and Late Summer. 
+
+If we used these dates, hpw do we account for the different herds (Ahiak winters here but they're expected to winter on the tundra as opposed to Bev/Bath) and the seasons where we're less likely to have female caribou (i.e. spring)
+
+#######################################################################################################################################################################################################################################################################################################################################
+
+```{r}
+ library(lme4); library(tidyr) #load GLMM specific packages
+
+#oo <- options(repos = "https://cran.r-project.org/")
+#install.packages("Matrix")
+#install.packages("lme4")
+#options(oo)
+```
+
+The lme4 package requires a dataframe format (as above), with the response term and the predictor variables all included in the same location.
+
+Next we will fit a mixed effects model to this data set using lme4. You may have noticed that we haven’t calculated a separate capture rate dataframe! That is because we can create a relative abundance index within the model itself by providing an offset() term . An offset term serves to scale the response term based on the amount of survey effort, and preserves the original units of the observations (counts).
+
+The model takes the form:
+
+Response term ~ fixed effect + offset() + (1|random intercept), data frame, distribution
+
+We include location_site as the random intercept, as camera locations are clustered are not independent. We use the poisson family, as our response term is a count.
+
+Convergence errors often arise as when we fit a model which is too complicated! It basically says the the model hasn’t completely “solved” the parameters within it.
+
+#NOTE: 2024-02-25 ######################################################################
+removed monthly data as realistically too coarse to be used to infer anything useful.
+
+# Multiseason, DAILY
+
+The telemetry data was informative but still found it difficult to set seasonal cutoff dates based on that alone. Plotting daily detection rate for caribou might be a better way to find natural seasonal breaks and is the most detailed data we have on hand. 
+
+Let's see how this breaks down into 1 day events to help determine seasonal breaks
+```{r}
+#Load biweekly detection data
+daily_obs<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_day_mam.csv")
+```
+
+Join this dataframe with the location data, as before:
+```{r}
+mod_dat_daily <- left_join(daily_obs, z_locs)
+```
+
+And let’s do another raw data check:
+```{r}
+boxplot(mod_dat_daily$Caribou~mod_dat_daily$dom_habitat_lcc_hexagon,
+        las=2,
+        xlab="lcc landcover",
+        ylab="Habitat use")
+```
+
+Add snow based seasons
+```{r}
+#format day as Date
+mod_dat_daily$day<-as.Date(mod_dat_daily$day)
+
+#create column season
+mod_dat_daily <- mod_dat_daily %>%
+  mutate(snow_season = ifelse(month(day) %in% c(5, 6, 7, 8, 9, 10), "summer", "winter"))
+
+# Get the column names
+column_names <- names(mod_dat_daily)
+
+# Reorder the columns
+new_column_order <- c(column_names[1:4], "snow_season", column_names[5:length(column_names)])
+
+# Create the reordered data frame
+mod_dat_daily <- mod_dat_daily[, new_column_order]
+
+# make it a factor factors
+mod_dat_daily <- mod_dat_daily %>% 
+            mutate_if(is.character,as.factor)
+
+```
+
+let's plot caribou detections summed across locations per biweek coloured by snow based seasons
+```{r}
+# Group by day and summarize the total Caribou count and effort
+daily_sum <- mod_dat_daily %>%
+  group_by(year = year(day), day, snow_season) %>%
+  summarise(total_caribou = sum(Caribou), total_effort = sum(n_days_effort))
+
+# Plot the data for total Caribou count
+ggplot(daily_sum, aes(x = day, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Count Summed Across Locations by Day",
+       x = "Day",
+       y = "Total Caribou Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))+
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y")
+
+
+# Plot the data for capture rate
+daily_sum$total_daily_cr <- (daily_sum$total_caribou / daily_sum$total_effort)
+
+ggplot(daily_sum, aes(x = day, y = total_daily_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Daily CR Across Locations by Day",
+       x = "Day",
+       y = "Total Caribou CR") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y")
+```
+Based on the daily detections it looks like caribou detection rate could be broken down into the following biologically relevant seasons. These dates roughly conform to date ranges for the Beverly, Bathurst, and AHiak herds listed in various GN and GNWT reports. 
+
+Typical caribou seasons (Nagy 2011 and GN use 9 seasons):
+July 29, 2021 - Oct 20, 2021: Summer/Late Summer
+Oct 21, 2021 - Oct 31, 2021: Pre-breeding Migration
+Nov 1, 2021 - Dec 14, 2021: Rut/Post-breeding Migration
+Dec 15, 2021 - Apr 4, 2022: Winter
+Apr 5, 2022 - May 14, 2022: Spring Migration
+May 15, 2022 - early June, 2022: Calving
+early June, 2022 - July 30, 2022: Post-calving/Summer
+July 31, 2022 - Aug 24, 2022: Late Summer
+
+Simplified 4 seasons (Bathurst Range Plan also uses 4):
+July 29, 2021 - Oct 20, 2021: Summer
+Oct 21, 2021 - Dec 14, 2021: Fall
+Dec 15, 2021 - Apr 4, 2022: Winter
+Apr 5, 2022 - June 21, 2022: Spring
+June 22, 2022 - Aug 24, 2022: Summer
+
+Add simplified 4 seasons and plot
+```{r}
+# Define function to assign seasons based on date
+assign_season <- function(date) {
+  case_when(
+    date >= as.Date("2021-07-29") & date <= as.Date("2021-10-20") ~ "Summer",
+    date >= as.Date("2021-10-21") & date <= as.Date("2021-12-14") ~ "Fall",
+    date >= as.Date("2021-12-15") & date <= as.Date("2022-04-04") ~ "Winter",
+    date >= as.Date("2022-04-05") & date <= as.Date("2022-06-21") ~ "Spring",
+    date >= as.Date("2022-06-22") & date <= as.Date("2022-08-24") ~ "Summer",
+    TRUE ~ "Unknown" # Default case
+  )
+}
+
+# Create new column "four_season"
+mod_dat_daily <- mod_dat_daily %>%
+  mutate(four_season = assign_season(day))
+
+# Get the column names
+column_names <- names(mod_dat_daily)
+
+# Reorder the columns
+new_column_order <- c(column_names[1:4], "snow_season", "four_season", column_names[5:length(column_names)])
+
+# Create the reordered data frame
+mod_dat_daily <- mod_dat_daily[, new_column_order]
+
+# Make sure it's a factor
+mod_dat_daily <- mod_dat_daily %>% 
+            mutate_if(is.character,as.factor)
+
+```
+
+let's plot it out
+```{r}
+# Group by day and summarize the total Caribou count and effort
+daily_sum <- mod_dat_daily %>%
+  group_by(year = year(day), day, four_season) %>%
+  summarise(total_caribou = sum(Caribou), total_effort = sum(n_days_effort))
+
+# Plot the data for total Caribou count
+ggplot(daily_sum, aes(x = day, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Count Summed Across Locations by Day",
+       x = "Day",
+       y = "Total Caribou Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y")
+
+
+# Plot the data for capture rate
+daily_sum$total_daily_cr <- (daily_sum$total_caribou / daily_sum$total_effort)
+
+ggplot(daily_sum, aes(x = day, y = total_daily_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Daily CR Across Locations by Day",
+       x = "Day",
+       y = "Total Caribou CR") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y")
+
+```
+
+Try to illustrate this in a doughnut plot 
+```{r}
+
+# Sample data (replace with your actual start and end dates)
+season_data <- data.frame(
+  Season = c("Summer", "Fall", "Winter", "Spring"),
+  Start_Date = as.Date(c("2021-07-29", "2021-10-21", "2021-12-15", "2022-04-05")),
+  End_Date = as.Date(c("2021-10-20", "2021-12-14", "2022-04-04", "2022-06-21"))
+)
+
+# Calculate the duration of each season
+season_data$Duration <- season_data$End_Date - season_data$Start_Date
+
+# Create the doughnut chart
+ggplot(season_data, aes(x = "", y = Duration, fill = Season)) +
+  geom_bar(width = 1, stat = "identity", color = "white") +
+  coord_polar("y", start = 0) +
+  theme_void() +
+  theme(legend.position = "right") +
+  geom_text(aes(label = Season), position = position_stack(vjust = 0.5)) +
+  scale_fill_manual(values = c("orange", "brown", "blue", "green")) +  # Customizing colors
+  labs(title = "Duration of Four Seasons")  # Add title
+
+```
+
+
+########################################################################################################################################################################################################################################################################################################################################################################
+
+#  Multiseason, WEEKLY detections
+```{r}
+# Import the total observations dataset
+weekly_obs <- read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_week_mam.csv", header=T)
+```
+
+Join this dataframe with the location data, as before:
+```{r}
+mod_dat_wk <- left_join(weekly_obs, z_locs)
+
+# Remove rows with year 2021 and weeks 30, 31, 32, or 33 due to low survey effort
+mod_dat_wk <- mod_dat_wk %>%
+  filter(!(year == 2021 & week %in% c(30, 31, 32, 33)))
+```
+
+Raw data check:
+```{r}
+boxplot(mod_dat_wk$Caribou~mod_dat_wk$dom_habitat_lcc_hexagon,
+        las=2,
+        xlab="lcc landcover",
+        ylab="Habitat use")
+```
+
+create snow based seasons
+```{r}
+# Lets create a new column and give it the value summer
+mod_dat_wk$snow_season <- "summer"
+mod_dat_wk$snow_season[mod_dat_wk$week %in% c(44:53,1:17)] <- "winter"
+
+# Get the column names
+column_names <- names(mod_dat_wk)
+
+# Reorder the columns
+new_column_order <- c(column_names[1:3], "snow_season", column_names[4:length(column_names)])
+
+# Create the reordered data frame
+mod_dat_wk <- mod_dat_wk[, new_column_order]
+
+# make it a factor factors
+mod_dat_wk <- mod_dat_wk %>% 
+            mutate_if(is.character,as.factor)
+
+```
+
+Plot caribou detections and rate summed across locations per week
+```{r}
+# Convert 'week' and 'year' to a Date object
+mod_dat_wk$week_year <- as.Date(paste(mod_dat_wk$year, mod_dat_wk$week, "1", sep="-"), format="%Y-%U-%u")
+
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Caribou),total_effort = sum(n_days_effort))
+
+#create capture rate per 100 days
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Count Summed Across Locations by Week",
+       x = "Week of the Year",
+       y = "Total Caribou Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Weekly CR Across Locations by Week",
+       x = "Week of the Year",
+       y = "Total Caribou CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+```
+
+let's repeat this process with the new 4-season caribou based dates from the daily detection data
+###NOTE: 2024-02-25 #############################################################################
+Should the 4-seasons be based now on week instead of the daily detections even though it's less detailed?
+
+based on daily detection rate:
+July 29, 2021 - Oct 20, 2021: Summer
+Oct 21, 2021 - Dec 14, 2021: Fall
+Dec 15, 2021 - Apr 4, 2022: Winter
+Apr 5, 2022 - June 21, 2022: Spring
+June 22, 2022 - Aug 24, 2022: Summer
+
+based on weekly detection rates? 
+July 26, 2021 - Oct 18, 2021: Summer
+Oct 25, 2021 - Dec 13, 2021: Fall
+Dec 20, 2021 - Apr 4, 2022: Winter
+Apr 11, 2022 - June 21, 2022: Spring
+June 22, 2022 - Aug 24, 2022: Summer
+```{r}
+# Let's create a new column for the four seasons based on the specified date ranges
+mod_dat_wk$four_season <- "Summer"
+mod_dat_wk$four_season[mod_dat_wk$week_year >= as.Date("2021-07-29") & mod_dat_wk$week_year <= as.Date("2021-10-20")] <- "Summer"
+mod_dat_wk$four_season[mod_dat_wk$week_year >= as.Date("2021-10-21") & mod_dat_wk$week_year <= as.Date("2021-12-14")] <- "Fall"
+mod_dat_wk$four_season[mod_dat_wk$week_year >= as.Date("2021-12-15") & mod_dat_wk$week_year <= as.Date("2022-04-04")] <- "Winter"
+mod_dat_wk$four_season[mod_dat_wk$week_year >= as.Date("2022-04-05") & mod_dat_wk$week_year <= as.Date("2022-06-21")] <- "Spring"
+mod_dat_wk$four_season[mod_dat_wk$week_year >= as.Date("2022-06-22") & mod_dat_wk$week_year <= as.Date("2022-08-24")] <- "Summer"
+
+# Get the column names
+column_names <- names(mod_dat_wk)
+
+# Reorder the columns
+new_column_order <- c(column_names[1:3], "four_season", column_names[4:length(column_names)])
+
+# Create the reordered data frame
+mod_dat_wk <- mod_dat_wk[, new_column_order]
+
+# Make it a factor
+mod_dat_wk <- mod_dat_wk %>% 
+            mutate_if(is.character, as.factor)
+
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Caribou), total_effort = sum(n_days_effort))
+
+# Create capture rate per 100 days
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Count Summed Across Locations by Week",
+       x = "Week of the Year",
+       y = "Total Caribou Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Weekly CR Across Locations by Week",
+       x = "Week of the Year",
+       y = "Total Caribou CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+
+```
+
+
+let's run a couple super simple models, one with a random effect and one with the survey effort offset and no extra covariates:
+```{r}
+# GLMM with only a random effect
+glmm_wk_random <- glmer.nb(Caribou ~ 1 + (1 | location_site), data = mod_dat_wk)
+
+summary(glmm_wk_random)
+
+#GLMM with random and survey effort
+
+glmm_wk_random_eff <- glmer.nb(Caribou ~ 1 +  offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_wk)
+
+summary(glmm_wk_random_eff)
+```
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: Negative Binomial(0.0678)  ( log )
+Formula: Caribou ~ 1 + (1 | location_site)
+   Data: mod_dat_wk
+
+     AIC      BIC   logLik deviance df.resid 
+  6802.6   6825.1  -3398.3   6796.6    13007 
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-0.2524 -0.2324 -0.0248 -0.0217 21.5722 
+
+Random effects:
+ Groups        Name        Variance Std.Dev.
+ location_site (Intercept) 17.76    4.214   
+Number of obs: 13010, groups:  location_site, 60
+
+Fixed effects:
+            Estimate Std. Error z value Pr(>|z|)    
+(Intercept)  -5.6010     0.8333  -6.721  1.8e-11 ***
+
+
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: Negative Binomial(0.0665)  ( log )
+Formula: Caribou ~ 1 + offset(log(n_days_effort)) + (1 | location_site)
+   Data: mod_dat_wk
+
+     AIC      BIC   logLik deviance df.resid 
+  6820.8   6843.2  -3407.4   6814.8    13007 
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-0.2516 -0.2266 -0.0247 -0.0220 21.1805 
+
+Random effects:
+ Groups        Name        Variance Std.Dev.
+ location_site (Intercept) 18.49    4.3     
+Number of obs: 13010, groups:  location_site, 60
+
+Fixed effects:
+            Estimate Std. Error z value Pr(>|z|)    
+(Intercept)  -7.4657     0.8208  -9.096   <2e-16 ***
+
+
+
+```{r}
+#GLMM with random, survey effort, snow season
+glmm_wk_snowssn <- glmer.nb(Caribou ~ 1 + snow_season + offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_wk)
+
+summary(glmm_wk_snowssn)
+
+#GLMM with random, survey effort, four season
+glmm_wk_fourssn <- glmer.nb(Caribou ~ 1 + four_season + offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_wk)
+
+summary(glmm_wk_fourssn)
+
+#GLMM with random, survey effort, week.
+glmm_wk_wk <- glmer.nb(Caribou ~ 1 + week + offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_wk)
+
+summary(glmm_wk_wk)
+```
+Warning messages:
+1: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  Model failed to converge with max|grad| = 0.148347 (tol = 0.002, component 1)
+2: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  Model is nearly unidentifiable: very large eigenvalue
+ - Rescale variables?
+> summary(glmm_wk_snowssn)
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: Negative Binomial(0.0851)  ( log )
+Formula: Caribou ~ 1 + snow_season + offset(log(n_days_effort)) + (1 |      location_site)
+   Data: mod_dat_wk
+
+     AIC      BIC   logLik deviance df.resid 
+  6539.8   6569.7  -3265.9   6531.8    13006 
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-0.2904 -0.1984 -0.0312 -0.0105 27.9025 
+
+Random effects:
+ Groups        Name        Variance Std.Dev.
+ location_site (Intercept) 20.79    4.56    
+Number of obs: 13010, groups:  location_site, 60
+
+Fixed effects:
+                  Estimate Std. Error z value Pr(>|z|)    
+(Intercept)        -9.1847     0.9747  -9.424   <2e-16 ***
+snow_seasonwinter   2.2785     0.1380  16.510   <2e-16 ***
+
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: Negative Binomial(0.1411)  ( log )
+Formula: Caribou ~ 1 + four_season + offset(log(n_days_effort)) + (1 |      location_site)
+   Data: mod_dat_wk
+
+     AIC      BIC   logLik deviance df.resid 
+  6166.3   6211.1  -3077.2   6154.3    13004 
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-0.3745 -0.1997 -0.0354 -0.0090 24.0575 
+
+Random effects:
+ Groups        Name        Variance Std.Dev.
+ location_site (Intercept) 20.47    4.525   
+Number of obs: 13010, groups:  location_site, 60
+
+Fixed effects:
+                  Estimate Std. Error z value Pr(>|z|)    
+(Intercept)        -5.8647     0.9494  -6.177 6.53e-10 ***
+four_seasonSpring  -3.6464     0.1800 -20.259  < 2e-16 ***
+four_seasonSummer  -3.4419     0.1584 -21.725  < 2e-16 ***
+four_seasonWinter  -2.4644     0.1563 -15.766  < 2e-16 ***
+
+Warning messages:
+1: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  Model failed to converge with max|grad| = 0.110934 (tol = 0.002, component 1)
+2: In checkConv(attr(opt, "derivs"), opt$par, ctrl = control$checkConv,  :
+  Model is nearly unidentifiable: very large eigenvalue
+ - Rescale variables?
+> summary(glmm_wk_wk)
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: Negative Binomial(0.103)  ( log )
+Formula: Caribou ~ 1 + week + offset(log(n_days_effort)) + (1 | location_site)
+   Data: mod_dat_wk
+
+     AIC      BIC   logLik deviance df.resid 
+  6519.5   6549.4  -3255.8   6511.5    13006 
+
+Scaled residuals: 
+   Min     1Q Median     3Q    Max 
+-0.317 -0.224 -0.034 -0.015 49.236 
+
+Random effects:
+ Groups        Name        Variance Std.Dev.
+ location_site (Intercept) 17.71    4.208   
+Number of obs: 13010, groups:  location_site, 60
+
+Fixed effects:
+             Estimate Std. Error z value Pr(>|z|)    
+(Intercept) -9.887947   0.871830  -11.34   <2e-16 ***
+week         0.072445   0.004036   17.95   <2e-16 ***
+
+
+### LCC
+
+```{r}
+glmm_wk_lcc <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk)
+
+
+summary(glmm_wk_lcc)
+```
+
+
+```{r}
+effect_plot(glmm_wk_lcc, pred = z.X300_SPPGLM, interval = TRUE, y.label = "Habitat use",
+            data=mod_dat_wk)
+```
+
+```{r}
+effect_plot(glmm_wk_lcc, pred = four_season, interval = TRUE, y.label = "Habitat use",
+            data=mod_dat_wk)
+```
+
+####Tundra LCC
+```{r}
+glmm_wk_lcc_tundra <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk)
+
+
+summary(glmm_wk_lcc_tundra)
+```
+
+
+### DEM
+
+Let's just look at our DEM covariates
+```{r}
+glmm_wk_dem <- glmer.nb(Caribou ~ 
+                    z.mean_elev_300 + z.mean_tri_300 + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk)
+
+
+summary(glmm_wk_dem)
+```
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: Negative Binomial(0.0849)  ( log )
+Formula: Caribou ~ z.mean_elev_300 + z.mean_tri_300 + season + offset(log(n_days_effort)) +      (1 | location_site)
+   Data: mod_dat_wk
+
+     AIC      BIC   logLik deviance df.resid 
+  6535.1   6579.9  -3261.5   6523.1    13004 
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-0.2903 -0.2007 -0.0366 -0.0125 27.0246 
+
+Random effects:
+ Groups        Name        Variance Std.Dev.
+ location_site (Intercept) 14.6     3.821   
+Number of obs: 13010, groups:  location_site, 60
+
+Fixed effects:
+                Estimate Std. Error z value Pr(>|z|)    
+(Intercept)      -8.7919     0.7625 -11.530  < 2e-16 ***
+z.mean_elev_300   0.5443     0.2014   2.702  0.00688 ** 
+z.mean_tri_300   -0.3930     0.2503  -1.570  0.11649    
+seasonwinter      2.2736     0.1381  16.463  < 2e-16 ***
+```{r}
+effect_plot(glmm_wk_dem, pred = z.mean_elev_300, interval = TRUE, y.label = "Habitat use",
+            data=mod_dat_wk)
+```
+
+```{r}
+effect_plot(glmm_wk_dem, pred = four_season, interval = TRUE, y.label = "Habitat use",
+            data=mod_dat_wk)
+```
+
+### Target
+
+```{r}
+glmm_wk_tgt <- glmer.nb(Caribou ~ 
+                     target_cons + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk)
+
+
+summary(glmm_wk_tgt)
+```
+
+```{r}
+effect_plot(glmm_wk_tgt, pred = target_cons, interval = TRUE, y.label = "Habitat use",
+            data=mod_dat_wk)
+```
+
+```{r}
+effect_plot(glmm_wk_tgt, pred = four_season, interval = TRUE, y.label = "Habitat use",
+            data=mod_dat_wk)
+```
+
+### Co-occurrences
+
+#### Ungulates
+```{r}
+glmm_wk_ung <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk)
+
+
+summary(glmm_wk_ung)
+```
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: Negative Binomial(0.0851)  ( log )
+Formula: Caribou ~ Muskox + Moose + season + offset(log(n_days_effort)) +      (1 | location_site)
+   Data: mod_dat_wk
+
+     AIC      BIC   logLik deviance df.resid 
+  6542.8   6587.6  -3265.4   6530.8    13004 
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-0.2905 -0.1968 -0.0313 -0.0104 28.1308 
+
+Random effects:
+ Groups        Name        Variance Std.Dev.
+ location_site (Intercept) 20.96    4.578   
+Number of obs: 13010, groups:  location_site, 60
+
+Fixed effects:
+             Estimate Std. Error z value Pr(>|z|)    
+(Intercept)   -9.2264     0.9799  -9.415   <2e-16 ***
+Muskox         0.2227     0.2717   0.820    0.412    
+Moose          0.4310     0.8316   0.518    0.604    
+seasonwinter   2.2993     0.1398  16.448   <2e-16 ***
+
+```{r}
+effect_plot(glmm_wk_ung, pred = Muskox, interval = TRUE, y.label = "Habitat use",
+            data=mod_dat_wk)
+```
+
+```{r}
+effect_plot(glmm_wk_ung, pred = four_season, interval = TRUE, y.label = "Habitat use",
+            data=mod_dat_wk)
+```
+
+#### Predators
+```{r}
+glmm_wk_pred <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + Grizzly.Bear + Wolverine + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk)
+
+summary(glmm_wk_pred)
+```
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: Negative Binomial(0.086)  ( log )
+Formula: Caribou ~ Gray.Wolf + Grizzly.Bear + Wolverine + season + offset(log(n_days_effort)) +  
+    (1 | location_site)
+   Data: mod_dat_wk
+
+     AIC      BIC   logLik deviance df.resid 
+  6535.5   6587.8  -3260.8   6521.5    13003 
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-0.2928 -0.1995 -0.0312 -0.0107 27.4410 
+
+Random effects:
+ Groups        Name        Variance Std.Dev.
+ location_site (Intercept) 20.71    4.551   
+Number of obs: 13010, groups:  location_site, 60
+
+Fixed effects:
+             Estimate Std. Error z value Pr(>|z|)    
+(Intercept)   -9.1916     0.9667  -9.509   <2e-16 ***
+Gray.Wolf      1.1992     0.4507   2.661   0.0078 ** 
+Grizzly.Bear   0.2307     0.9463   0.244   0.8074    
+Wolverine     -0.7029     0.7821  -0.899   0.3688    
+seasonwinter   2.2690     0.1378  16.472   <2e-16 ***
+
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Correlation of Fixed Effects:
+            (Intr) Gry.Wl Grzz.B Wolvrn
+Gray.Wolf   -0.021                     
+Grizzly.Ber -0.006  0.003              
+Wolverine    0.005 -0.005 -0.497       
+seasonwintr -0.138  0.008  0.071 -0.044
+```{r}
+effect_plot(glmm_wk_pred, pred = Gray.Wolf, interval = TRUE, y.label = "Habitat use",
+            data=mod_dat_wk)
+```
+
+```{r}
+effect_plot(glmm_wk_pred, pred = four_season, interval = TRUE, y.label = "Habitat use",
+            data=mod_dat_wk)
+```
+
+#### Apparent Competition
+```{r}
+glmm_wk_app <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + Wolverine + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk)
+
+summary(glmm_wk_app)
+```
+
+### Significant Only
+
+Let's cut it down to only the significant predictors from the previous models.
+```{r}
+glmm_wk_cat2 <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_BAR + z.mean_elev_300 + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk)
+
+
+summary(glmm_wk_cat2)
+```
+
+```{r}
+effect_plot(glmm_wk_cat2, pred = z.X300_SPPSLM, interval = TRUE, y.label = "Habitat use",
+            data=mod_dat_wk)
+```
+
+```{r}
+effect_plot(glmm_wk_cat2, pred = four_season, interval = TRUE, y.label = "Habitat use",
+            data=mod_dat_wk)
+```
+
+Let's cut it down again....
+```{r}
+glmm_wk_cat3 <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_BAR + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk)
+
+summary(glmm_wk_cat3)
+```
+
+```{r}
+effect_plot(glmm_wk_cat3, pred = z.X300_BAR, interval = TRUE, y.label = "Habitat use",
+            data=mod_dat_wk)
+```
+
+```{r}
+effect_plot(glmm_wk_cat3, pred = four_season, interval = TRUE, y.label = "Habitat use",
+            data=mod_dat_wk)
+```
+
+
+target only model
+```{r}
+glmm_wk_tgtonly <- glmer.nb(Caribou ~ 
+                     target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk)
+
+summary(glmm_wk_tgtonly)
+```
+
+
+### Model comparison
+```{r}
+model.sel(glmm_wk_random, glmm_wk_random_eff, glmm_wk_snowssn, glmm_wk_fourssn, glmm_wk_wk, glmm_wk_lcc, glmm_wk_lcc_tundra, glmm_wk_dem, glmm_wk_tgt, glmm_wk_tgtonly, glmm_wk_pred, glmm_wk_ung, glmm_wk_app, glmm_wk_cat2, glmm_wk_cat3)
+```
+
+  
+############################################################################################################################################################################################################################
+  
+# Summer, WEEKLY detection data
+```{r}
+# Create a new data frame for summer
+mod_dat_wk_summer <- mod_dat_wk[mod_dat_wk$four_season == "Summer", ]
+```
+
+```{r}
+#null model
+glmm_wk_smr_null <- glmer.nb(Caribou ~ 
+                     offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer)
+summary(glmm_wk_smr_null)
+```
+
+```{r}
+#week model
+glmm_wk_smr_wk <- glmer.nb(Caribou ~ 
+                     week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer)
+summary(glmm_wk_smr_wk)
+```
+
+
+## LCC
+run LCC model WITHOUT week
+```{r}
+glmm_wk_smr_lcc <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer)
+
+summary(glmm_wk_smr_lcc)
+```
+
+run LCC model WITH week
+```{r}
+#glmm_wk_smr_lccwk <- glmer.nb(Caribou ~ 
+                    #z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer)
+
+#summary(glmm_wk_smr_lccwk)
+```
+
+### Tundra LCC
+```{r}
+glmm_wk_smr_lcc_tundra <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer)
+
+summary(glmm_wk_smr_lcc_tundra)
+```
+
+## DEM
+
+run dem model WITHOUT week
+```{r}
+glmm_wk_smr_dem <- glmer.nb(Caribou ~ 
+                    z.mean_elev_300 + z.mean_tri_300 + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer)
+
+summary(glmm_wk_smr_dem)
+```
+
+run dem model WITH week
+```{r}
+#glmm_wk_smr_demwk <- glmer.nb(Caribou ~ 
+                    #z.mean_elev_300 + z.mean_tri_300 + offset(log(n_days_effort)) + week + (1|location_site) , data=mod_dat_wk_summer)
+
+#summary(glmm_wk_smr_demwk)
+```
+
+## Target
+
+target WITHOUT week
+```{r}
+glmm_wk_smr_other <- glmer.nb(Caribou ~ 
+                     target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer)
+
+
+summary(glmm_wk_smr_other)
+```
+
+target WITH week
+```{r}
+#glmm_wk_smr_otherwk <- glmer.nb(Caribou ~ 
+                     #target_cons + week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer)
+
+
+#summary(glmm_wk_smr_otherwk)
+```
+Error in eval(mc, parent.frame(1L)) : 
+  pwrssUpdate did not converge in (maxit) iterations
+
+## Co-Occurrences
+
+### Ungulates
+
+How do those other ungulates effect caribou habitat use? WITHOUT week
+```{r}
+glmm_wk_smr_ung <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer)
+
+
+summary(glmm_wk_smr_ung)
+```
+
+ungulates, WITH week
+```{r}
+#glmm_wk_smr_ungwk <- glmer.nb(Caribou ~ 
+                    #Muskox + Moose + week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer)
+
+
+#summary(glmm_wk_smr_ungwk)
+```
+Error in eval(mc, parent.frame(1L)) : 
+  pwrssUpdate did not converge in (maxit) iterations
+
+### Predators
+
+predators, WITHOUT week
+```{r}
+glmm_wk_smr_pred <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer)
+
+
+summary(glmm_wk_smr_pred)
+```
+
+predators, WITH week
+```{r}
+#glmm_wk_smr_predwk <- glmer.nb(Caribou ~ 
+                    #Gray.Wolf + Grizzly.Bear + Wolverine + week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer)
+
+
+#summary(glmm_wk_smr_predwk)
+```
+Error in eval(mc, parent.frame(1L)) : 
+  pwrssUpdate did not converge in (maxit) iterations
+  
+###  Apparent Competition
+```{r}
+glmm_wk_smr_app <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer)
+
+
+summary(glmm_wk_smr_app)
+```
+
+
+## Significant Only
+
+EVERYTHING ALL AT ONCE.
+```{r}
+#glmm_wk_smr_all <- glmer.nb(Caribou ~ 
+                    #Gray.Wolf + Grizzly.Bear + Wolverine + Muskox + Moose + z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + target_cons + week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer)
+
+#summary(glmm_wk_smr_all)
+```
+
+SIGNIFICANT ONLY
+```{r}
+glmm_wk_smr_sig <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + z.mean_elev_300 +  + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer)
+
+summary(glmm_wk_smr_sig)
+```
+
+## Model Selection
+```{r}
+model.sel(glmm_wk_smr_null, glmm_wk_smr_wk, glmm_wk_smr_lcc, glmm_wk_smr_lcc_tundra, glmm_wk_smr_dem, glmm_wk_smr_other, glmm_wk_smr_pred, glmm_wk_smr_ung, glmm_wk_smr_app, glmm_wk_smr_sig)
+```
+
+############################################################################################################################################################################################################################
+
+# Fall, WEEKLY detection data
+```{r}
+# Create a new data frame for winter
+mod_dat_wk_fall <- mod_dat_wk[mod_dat_wk$four_season == "Fall", ]
+```
+
+```{r}
+#null model
+glmm_wk_fall_null <- glmer.nb(Caribou ~ 
+                     offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall)
+summary(glmm_wk_fall_null)
+```
+
+```{r}
+#week model
+glmm_wk_fall_wk <- glmer.nb(Caribou ~ 
+                     week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall)
+summary(glmm_wk_fall_wk)
+```
+
+## LCC
+run LCC model WITHOUT week
+```{r}
+glmm_wk_fall_lcc <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall)
+
+summary(glmm_wk_fall_lcc)
+```
+
+run LCC model WITH week
+```{r}
+#glmm_wk_fall_lccwk <- glmer.nb(Caribou ~ 
+                    #z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall)
+
+#summary(glmm_wk_fall_lccwk)
+```
+
+### Tundra LCC
+```{r}
+glmm_wk_fall_lcc_tundra <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall)
+
+summary(glmm_wk_fall_lcc_tundra)
+```
+
+## DEM
+
+run dem model WITHOUT week
+```{r}
+glmm_wk_fall_dem <- glmer.nb(Caribou ~ 
+                    z.mean_elev_300 + z.mean_tri_300 + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall)
+
+summary(glmm_wk_fall_dem)
+```
+
+run dem model WITH week
+```{r}
+#glmm_wk_fall_demwk <- glmer.nb(Caribou ~ 
+                    #z.mean_elev_300 + z.mean_tri_300 + offset(log(n_days_effort)) + week + (1|location_site) , data=mod_dat_wk_fall)
+
+#summary(glmm_wk_fall_demwk)
+```
+
+## Target
+
+target WITHOUT week
+```{r}
+glmm_wk_fall_tgt <- glmer.nb(Caribou ~ 
+                     target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall)
+
+
+summary(glmm_wk_fall_tgt)
+```
+
+target WITH week
+```{r}
+#glmm_wk_wtr_otherwk <- glmer.nb(Caribou ~ 
+                     #target_cons + week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+
+#summary(glmm_wk_wtr_otherwk)
+```
+Error in eval(mc, parent.frame(1L)) : 
+  pwrssUpdate did not converge in (maxit) iterations
+
+## Co-occurrences
+
+### Ungulates
+
+How do those other ungulates effect caribou habitat use? WITHOUT week
+```{r}
+glmm_wk_fall_ung <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall)
+
+
+summary(glmm_wk_fall_ung)
+```
+
+ungulates, WITH week
+```{r}
+#glmm_wk_wtr_ungwk <- glmer.nb(Caribou ~ 
+                    #Muskox + Moose + week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+
+#summary(glmm_wk_wtr_ungwk)
+```
+Error in eval(mc, parent.frame(1L)) : 
+  pwrssUpdate did not converge in (maxit) iterations
+
+### Predators
+
+predators, WITHOUT week
+```{r}
+glmm_wk_fall_pred <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall)
+
+
+summary(glmm_wk_fall_pred)
+```
+
+predators, WITH week
+```{r}
+#glmm_wk_wtr_predwk <- glmer.nb(Caribou ~ 
+                    #Gray.Wolf + Grizzly.Bear + Wolverine + week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+
+#summary(glmm_wk_wtr_predwk)
+```
+Error in eval(mc, parent.frame(1L)) : 
+  pwrssUpdate did not converge in (maxit) iterations
+
+### Apparent Competition
+
+```{r}
+#glmm_wk_fall_app <- glmer.nb(Caribou ~ 
+                    #Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall)
+
+
+#summary(glmm_wk_fall_app)
+```
+Error in pwrssUpdate(pp, resp, tol = tolPwrss, GQmat = GQmat, compDev = compDev,  : 
+  Downdated VtV is not positive definite
+
+## Significant Only
+
+SIGNIFICANT ONLY
+```{r}
+glmm_wk_fall_sig <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + z.mean_elev_300 + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall)
+
+summary(glmm_wk_fall_sig)
+```
+
+
+## Model Selection
+```{r}
+model.sel(glmm_wk_fall_null, glmm_wk_fall_wk, glmm_wk_fall_lcc, glmm_wk_fall_lcc_tundra, glmm_wk_fall_dem, glmm_wk_fall_tgt, glmm_wk_fall_pred, glmm_wk_fall_ung, glmm_wk_fall_sig)
+```
+
+
+################################################################################################################################################################################################################################################
+
+# Winter, WEEKLY detection data
+```{r}
+# Create a new data frame for winter
+mod_dat_wk_winter <- mod_dat_wk[mod_dat_wk$four_season == "Winter", ]
+```
+
+```{r}
+#null model
+glmm_wk_wtr_null <- glmer.nb(Caribou ~ 
+                     offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+summary(glmm_wk_wtr_null)
+```
+
+```{r}
+#week model
+glmm_wk_wtr_wk <- glmer.nb(Caribou ~ 
+                     week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+summary(glmm_wk_wtr_wk)
+```
+
+## LCC
+run LCC model WITHOUT week
+```{r}
+glmm_wk_wtr_lcc <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+summary(glmm_wk_wtr_lcc)
+```
+
+run LCC model WITH week
+```{r}
+#glmm_wk_wtr_lccwk <- glmer.nb(Caribou ~ 
+                    #z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+#summary(glmm_wk_wtr_lccwk)
+```
+
+### Tundra LCC
+```{r}
+glmm_wk_wtr_lcc_tundra <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+summary(glmm_wk_wtr_lcc_tundra)
+```
+
+## DEM
+
+run dem model WITHOUT week
+```{r}
+glmm_wk_wtr_dem <- glmer.nb(Caribou ~ 
+                    z.mean_elev_300 + z.mean_tri_300 + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+summary(glmm_wk_wtr_dem)
+```
+
+run dem model WITH week
+```{r}
+#glmm_wk_wtr_demwk <- glmer.nb(Caribou ~ 
+                    #z.mean_elev_300 + z.mean_tri_300 + offset(log(n_days_effort)) + week + (1|location_site) , data=mod_dat_wk_winter)
+
+#summary(glmm_wk_wtr_demwk)
+```
+
+## Target
+
+target WITHOUT week
+```{r}
+glmm_wk_wtr_other <- glmer.nb(Caribou ~ 
+                     target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+
+summary(glmm_wk_wtr_other)
+```
+
+target WITH week
+```{r}
+#glmm_wk_wtr_otherwk <- glmer.nb(Caribou ~ 
+                     #target_cons + week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+
+#summary(glmm_wk_wtr_otherwk)
+```
+Error in eval(mc, parent.frame(1L)) : 
+  pwrssUpdate did not converge in (maxit) iterations
+
+## Co-occurrences
+
+### Ungulates
+
+How do those other ungulates effect caribou habitat use? WITHOUT week
+```{r}
+glmm_wk_wtr_ung <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+
+summary(glmm_wk_wtr_ung)
+```
+
+ungulates, WITH week
+```{r}
+#glmm_wk_wtr_ungwk <- glmer.nb(Caribou ~ 
+                    #Muskox + Moose + week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+
+#summary(glmm_wk_wtr_ungwk)
+```
+Error in eval(mc, parent.frame(1L)) : 
+  pwrssUpdate did not converge in (maxit) iterations
+
+### Predators
+
+predators, WITHOUT week
+```{r}
+glmm_wk_wtr_pred <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+
+summary(glmm_wk_wtr_pred)
+```
+
+predators, WITH week
+```{r}
+#glmm_wk_wtr_predwk <- glmer.nb(Caribou ~ 
+                    #Gray.Wolf + Grizzly.Bear + Wolverine + week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+
+#summary(glmm_wk_wtr_predwk)
+```
+Error in eval(mc, parent.frame(1L)) : 
+  pwrssUpdate did not converge in (maxit) iterations
+
+### Apparent Competition
+
+```{r}
+glmm_wk_wtr_app <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+
+summary(glmm_wk_wtr_app)
+```
+
+## Significant Only
+
+SIGNIFICANT ONLY
+```{r}
+glmm_wk_wtr_sig <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + z.mean_elev_300 + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+summary(glmm_wk_wtr_sig)
+```
+
+wout elevation which stopped showing as signif
+```{r}
+glmm_wk_wtr_sig2 <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+summary(glmm_wk_wtr_sig2)
+```
+
+## Model Selection
+```{r}
+model.sel(glmm_wk_wtr_null, glmm_wk_wtr_wk, glmm_wk_wtr_lcc, glmm_wk_wtr_lcc_tundra, glmm_wk_wtr_dem, glmm_wk_wtr_other, glmm_wk_wtr_pred, glmm_wk_wtr_ung, glmm_wk_wtr_app, glmm_wk_wtr_sig, glmm_wk_wtr_sig2)
+```
+
+
+############################################################################################################################################################################################################################
+
+# Spring, WEEKLY detection data
+```{r}
+# Create a new data frame for winter
+mod_dat_wk_spri <- mod_dat_wk[mod_dat_wk$four_season == "Spring", ]
+```
+
+```{r}
+#null model
+glmm_wk_spri_null <- glmer.nb(Caribou ~ 
+                     offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri)
+summary(glmm_wk_spri_null)
+```
+
+```{r}
+#week model
+glmm_wk_spri_wk <- glmer.nb(Caribou ~ 
+                     week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri)
+summary(glmm_wk_spri_wk)
+```
+
+## LCC
+run LCC model WITHOUT week
+```{r}
+glmm_wk_spri_lcc <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri)
+
+summary(glmm_wk_spri_lcc)
+```
+
+run LCC model WITH week
+```{r}
+#glmm_wk_spri_lccwk <- glmer.nb(Caribou ~ 
+                    #z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri)
+
+#summary(glmm_wk_spri_lccwk)
+```
+
+### Tundra LCC
+```{r}
+glmm_wk_spri_lcc_tundra <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri)
+
+summary(glmm_wk_fall_lcc_tundra)
+```
+
+## DEM
+
+run dem model WITHOUT week
+```{r}
+glmm_wk_spri_dem <- glmer.nb(Caribou ~ 
+                    z.mean_elev_300 + z.mean_tri_300 + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri)
+
+summary(glmm_wk_spri_dem)
+```
+
+run dem model WITH week
+```{r}
+#glmm_wk_spri_demwk <- glmer.nb(Caribou ~ 
+                    #z.mean_elev_300 + z.mean_tri_300 + offset(log(n_days_effort)) + week + (1|location_site) , data=mod_dat_wk_spri)
+
+#summary(glmm_wk_spri_demwk)
+```
+
+## Target
+
+target WITHOUT week
+```{r}
+glmm_wk_spri_tgt <- glmer.nb(Caribou ~ 
+                     target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri)
+
+
+summary(glmm_wk_spri_tgt)
+```
+
+target WITH week
+```{r}
+#glmm_wk_wtr_otherwk <- glmer.nb(Caribou ~ 
+                     #target_cons + week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+
+#summary(glmm_wk_wtr_otherwk)
+```
+Error in eval(mc, parent.frame(1L)) : 
+  pwrssUpdate did not converge in (maxit) iterations
+
+## Co-occurrences
+
+### Ungulates
+
+How do those other ungulates effect caribou habitat use? WITHOUT week
+```{r}
+glmm_wk_spri_ung <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri)
+
+
+summary(glmm_wk_spri_ung)
+```
+
+ungulates, WITH week
+```{r}
+#glmm_wk_wtr_ungwk <- glmer.nb(Caribou ~ 
+                    #Muskox + Moose + week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+
+#summary(glmm_wk_wtr_ungwk)
+```
+Error in eval(mc, parent.frame(1L)) : 
+  pwrssUpdate did not converge in (maxit) iterations
+
+### Predators
+
+predators, WITHOUT week
+```{r}
+glmm_wk_spri_pred <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri)
+
+
+summary(glmm_wk_spri_pred)
+```
+
+predators, WITH week
+```{r}
+#glmm_wk_wtr_predwk <- glmer.nb(Caribou ~ 
+                    #Gray.Wolf + Grizzly.Bear + Wolverine + week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+
+#summary(glmm_wk_wtr_predwk)
+```
+Error in eval(mc, parent.frame(1L)) : 
+  pwrssUpdate did not converge in (maxit) iterations
+
+### Apparent Competition
+
+```{r}
+glmm_wk_spri_app <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri)
+
+
+summary(glmm_wk_spri_app)
+```
+
+## Significant Only
+
+SIGNIFICANT ONLY
+```{r}
+glmm_wk_spri_sig <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + z.mean_elev_300 + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri)
+
+summary(glmm_wk_spri_sig)
+```
+
+
+add MF and remove wolf and elev???
+```{r}
+glmm_wk_spri_sig2 <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + z.X300_MF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri)
+
+summary(glmm_wk_spri_sig2)
+```
+
+## Model Selection
+```{r}
+model.sel(glmm_wk_spri_null, glmm_wk_spri_wk, glmm_wk_spri_lcc, glmm_wk_spri_lcc_tundra, glmm_wk_spri_dem, glmm_wk_spri_tgt, glmm_wk_spri_pred, glmm_wk_spri_ung, glmm_wk_spri_app, glmm_wk_spri_sig, glmm_wk_spri_sig2)
+```
+
+
+
+########################################################################################################################################################################################################################################################################################################################################################################
+
+#Multiseason, BIWEEKLY
+
+Let's see how this breaks down into 14 day events because why not and other people do this and the committee said sure...
+```{r}
+#Load biweekly detection data
+biweekly_obs<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_biweek_mam.csv")
+```
+
+Let’s join this dataframe with the location data, as before:
+```{r}
+mod_dat_bwk <- left_join(biweekly_obs, z_locs)
+
+#remove biweek 15 and 16 in 2021 due to low survey effort
+mod_dat_bwk <- mod_dat_bwk %>%
+  filter(!(biweek == 15 & year == 2021)) %>% 
+  filter(!(biweek == 16 & year == 2021))
+```
+
+And let’s do another raw data check:
+```{r}
+boxplot(mod_dat_bwk$Caribou~mod_dat_bwk$dom_habitat_lcc_hexagon,
+        las=2,
+        xlab="lcc landcover",
+        ylab="Habitat use")
+```
+
+snow based seasons
+```{r}
+# Lets create a new column and give it the value summer
+mod_dat_bwk$snow_season <- "summer"
+mod_dat_bwk$snow_season[mod_dat_bwk$biweek %in% c(22:27,1:8)] <- "winter"
+
+# Get the column names
+column_names <- names(mod_dat_bwk)
+
+# Reorder the columns
+new_column_order <- c(column_names[1:3], "snow_season", column_names[4:length(column_names)])
+
+# Create the reordered data frame
+mod_dat_bwk <- mod_dat_bwk[, new_column_order]
+
+# make it a factor factors
+mod_dat_bwk <- mod_dat_bwk %>% 
+            mutate_if(is.character,as.factor)
+
+#load biweek start and end dates
+biweek_start_end<-read.csv("Processed_Data/biweek_start_end_dates.csv")
+
+#join to data
+mod_dat_bwk <- left_join(mod_dat_bwk, biweek_start_end, by=c("year", "biweek"))
+
+# Get the column names of mod_dat_bwk
+column_names <- names(mod_dat_bwk)
+
+# Reorder the columns
+new_column_order <- c(column_names[1:3], "biweek_start_date", "biweek_end_date", column_names[4:length(column_names)])
+
+# Create the reordered data frame
+mod_dat_bwk <- mod_dat_bwk[, new_column_order]
+```
+
+let's plot caribou detections summed across locations per biweek
+```{r}
+# Combine 
+mod_dat_bwk$biweek_year <- (paste(mod_dat_bwk$year, mod_dat_bwk$biweek, sep="-"))
+
+# Group by week_year and summarize the total Caribou count and effort
+biweekly_sum <- mod_dat_bwk %>%
+  group_by(year, biweek, snow_season) %>%
+  summarise(total_caribou = sum(Caribou),total_effort = sum(n_days_effort))
+
+#combine biweek 27 and biweek one to make up for the end of calendar Dec 31, week 27, effort 1 day problem
+biweek_27 <- biweekly_sum %>%
+  filter(biweek == 27)
+
+# Update the rows with biweek 1 with the summed values from biweek 27
+biweekly_sum <- biweekly_sum %>%
+  mutate(total_caribou = if_else(biweek == 1, total_caribou + biweek_27$total_caribou, total_caribou),
+         total_effort = if_else(biweek == 1, total_effort + biweek_27$total_effort, total_effort))
+
+# Remove the row with biweek 27
+biweekly_sum <- biweekly_sum %>%
+  filter(biweek != 27)
+
+# Remove biweek 15 and 16 (July and early August) 2021 because there's only 6 and 134 effort respectively
+biweekly_sum <- biweekly_sum %>%
+  filter(!(biweek == 15 & year == 2021)) %>% 
+  filter(!(biweek == 16 & year == 2021))
+
+#create capture rate per 14 days
+biweekly_sum$total_biweekly_cr<-((biweekly_sum$total_caribou)/(biweekly_sum$total_effort)*14)
+
+# Define the levels of the interaction variable to ensure correct order
+biweekly_sum$year_biweek <- with(biweekly_sum, reorder(paste(year, biweek, sep = "-"), as.numeric(biweek)))
+
+#sort out the order
+biweekly_sum <- biweekly_sum %>%
+  mutate(year_biweek = factor(year_biweek)) %>%
+  arrange(year_biweek) 
+
+# Plot the data
+ggplot(biweekly_sum, aes(x = year_biweek, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Count Summed Across Locations by Bi-Week",
+       x = "Bi-Week of the Year",
+       y = "Total Caribou Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+#plot the Capture rate
+ggplot(biweekly_sum, aes(x = year_biweek, y = total_biweekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou BiWeekly CR Across Locations by BiWeek",
+       x = "Bi-Week of the Year",
+       y = "Total Caribou CR") +
+  theme_minimal() +
+  #scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "2 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+```
+
+let's plot the data based on biologically relevant seasons generated from daily detection data: 
+July 29, 2021 - Oct 20, 2021: Summer
+Oct 21, 2021 - Dec 14, 2021: Fall
+Dec 15, 2021 - Apr 4, 2022: Winter
+Apr 5, 2022 - June 21, 2022: Spring
+June 22, 2022 - Aug 24, 2022: Summer
+```{r}
+# Convert biweek_start_date and biweek_end_date to Date objects
+mod_dat_bwk$biweek_start_date <- as.Date(mod_dat_bwk$biweek_start_date)
+mod_dat_bwk$biweek_end_date <- as.Date(mod_dat_bwk$biweek_end_date)
+
+# Define the function to assign four_season based on dates
+assign_four_season <- function(date) {
+  ifelse(date >= as.Date("2021-07-29") & date <= as.Date("2021-10-20"), "Summer",
+  ifelse(date >= as.Date("2021-10-21") & date <= as.Date("2021-12-14"), "Fall",
+  ifelse(date >= as.Date("2021-12-15") & date <= as.Date("2022-04-04"), "Winter",
+  ifelse(date >= as.Date("2022-04-05") & date <= as.Date("2022-06-21"), "Spring",
+  ifelse(date >= as.Date("2022-06-22") & date <= as.Date("2022-08-24"), "Summer", NA)))))
+}
+
+# Add four_season column
+mod_dat_bwk$four_season <- assign_four_season(mod_dat_bwk$biweek_start_date)
+
+# Combine biweek_start_date and biweek_end_date to create a new column year_biweek
+mod_dat_bwk$year_biweek <- paste(mod_dat_bwk$year, mod_dat_bwk$biweek, sep = "-")
+
+# Group by year_biweek and summarize the total Caribou count and effort
+biweekly_sum <- mod_dat_bwk %>%
+  group_by(year_biweek, biweek_start_date, biweek_end_date, four_season) %>%
+  summarise(total_caribou = sum(Caribou), total_effort = sum(n_days_effort))
+
+#combine year_biweek 2021-27 and year_biweek 2022-1 to make up for the end of calendar Dec 31, week 27, effort 1 day problem
+year_biweek_27 <- biweekly_sum %>%
+  filter(year_biweek == "2021-27")
+
+# Update the rows with biweek 1 with the summed values from biweek 27
+biweekly_sum <- biweekly_sum %>%
+  mutate(total_caribou = if_else(year_biweek == "2022-1", total_caribou + year_biweek_27$total_caribou, total_caribou),
+         total_effort = if_else(year_biweek == "2022-1", total_effort + year_biweek_27$total_effort, total_effort))
+
+# Remove the row with biweek 27
+biweekly_sum <- biweekly_sum %>%
+  filter(year_biweek != "2021-27")
+
+# Remove biweek 15 and 16 (July and early August) 2021 because there's only 6 and 134 effort respectively
+biweekly_sum <- biweekly_sum %>%
+  filter(!(year_biweek == "2021-15")) %>% 
+  filter(!(year_biweek == "2021-16"))
+
+# Create capture rate per 14 days
+biweekly_sum$total_biweekly_cr <- (biweekly_sum$total_caribou / biweekly_sum$total_effort) * 14
+
+# Reorder the dataframe based on year_biweek treating it as YYYY-MM dates
+biweekly_sum <- biweekly_sum %>%
+  arrange(as.Date(paste0(year_biweek, "-1"), format = "%Y-%U-%u"))
+
+# Convert year_biweek to a factor with correct levels
+biweekly_sum$year_biweek <- factor(biweekly_sum$year_biweek, levels = unique(biweekly_sum$year_biweek))
+
+# Plot the data
+ggplot(biweekly_sum, aes(x = biweek_start_date, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Count Summed Across Locations by Bi-Week",
+       x = "Start Date of Bi-Week",
+       y = "Total Caribou Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
+  scale_x_date(date_breaks = "2 week", date_labels = "%Y-%m-%d")
+
+# Plot the capture rate
+ggplot(biweekly_sum, aes(x = biweek_start_date, y = total_biweekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou BiWeekly CR Across Locations by BiWeek",
+       x = "Start Date of Bi-Week",
+       y = "Total Caribou CR") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
+  scale_x_date(date_breaks = "2 week", date_labels = "%Y-%m-%d")
+
+```
+
+
+###Simple Models
+
+simple models for comparisons sake
+```{r}
+# GLMM with only a random effect
+glmm_bwk_random <- glmer.nb(Caribou ~ 1 + (1 | location_site), data = mod_dat_bwk)
+
+summary(glmm_bwk_random)
+
+#GLMM with random and survey effort
+
+glmm_bwk_random_eff <- glmer.nb(Caribou ~ 1 +  offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_bwk)
+
+summary(glmm_bwk_random_eff)
+
+```
+
+simple models with temporal aspects
+```{r}
+# GLMM with snow season
+glmm_bwk_snowssn <- glmer.nb(Caribou ~ snow_season +  offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_bwk)
+
+summary(glmm_bwk_snowssn)
+
+# GLMM with four season
+glmm_bwk_fourssn <- glmer.nb(Caribou ~ four_season +  offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_bwk)
+
+summary(glmm_bwk_fourssn)
+
+#GLMM with biweek
+glmm_bwk_bwk <- glmer.nb(Caribou ~ biweek +  offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_bwk)
+
+summary(glmm_bwk_bwk)
+```
+
+
+###LCC
+
+Run one with all LCC landcovers
+```{r}
+glmm_bwk_lcc <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk)
+
+
+summary(glmm_bwk_lcc)
+```
+
+
+####Tundra LCC
+
+tundra only landcovers
+```{r}
+glmm_bwk_lcc_tundra <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk)
+
+
+summary(glmm_bwk_lcc_tundra)
+```
+
+###DEM
+
+```{r}
+glmm_bwk_dem <- glmer.nb(Caribou ~ 
+                    z.mean_elev_300 + z.mean_tri_300 + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk)
+
+
+summary(glmm_bwk_dem)
+
+```
+
+###Target
+
+```{r}
+glmm_bwk_tgt <- glmer.nb(Caribou ~ 
+                    target_cons + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk)
+
+
+summary(glmm_bwk_tgt)
+
+```
+
+###Co-occurrences
+
+####Ungulates
+
+```{r}
+glmm_bwk_ung <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk)
+
+
+summary(glmm_bwk_ung)
+
+```
+
+####Predators
+
+```{r}
+glmm_bwk_pred <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + Grizzly.Bear + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk)
+
+
+summary(glmm_bwk_pred)
+
+```
+
+####Apparant Competition
+
+```{r}
+glmm_bwk_app <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk)
+
+
+summary(glmm_bwk_app)
+
+```
+
+###Signficant Only 
+
+significant with LCC
+```{r}
+#all signif from previous models
+glmm_bwk_sig1 <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk)
+
+
+summary(glmm_bwk_sig1)
+
+#pared down model after running all signif
+glmm_bwk_sig2 <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk)
+
+
+summary(glmm_bwk_sig2)
+
+#including MF...
+glmm_bwk_sig3 <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + z.X300_MF + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk)
+
+
+summary(glmm_bwk_sig3)
+```
+
+###Model Selection
+
+```{r}
+model.sel(glmm_bwk_random, glmm_bwk_random_eff, glmm_bwk_snowssn, glmm_bwk_fourssn, glmm_bwk_bwk, glmm_bwk_lcc, glmm_bwk_lcc_tundra, glmm_bwk_dem, glmm_bwk_tgt, glmm_bwk_pred, glmm_bwk_ung, glmm_bwk_app, glmm_bwk_sig1, glmm_bwk_sig2, glmm_bwk_sig3)
+```
+
+####################################################################################################################################################################################################################
+
+#Summer, BIWEEKLY
+
+Create a summer only dataframe
+```{r}
+# Create a new data frame for summer
+mod_dat_bwk_summer <- mod_dat_bwk[mod_dat_bwk$four_season == "Summer", ]
+```
+
+###Simple Models
+
+simple models for comparisons sake
+```{r}
+# GLMM with only a random effect
+glmm_bwk_smr_random <- glmer.nb(Caribou ~ 1 + (1 | location_site), data = mod_dat_bwk_summer)
+
+summary(glmm_bwk_smr_random)
+
+#GLMM with random and survey effort
+
+glmm_bwk_smr_random_eff <- glmer.nb(Caribou ~ 1 +  offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_bwk_summer)
+
+summary(glmm_bwk_smr_random_eff)
+
+```
+
+simple models with temporal aspects
+```{r}
+#GLMM with biweek
+glmm_bwk_smr_bwk <- glmer.nb(Caribou ~ biweek +  offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_bwk_summer)
+
+summary(glmm_bwk_smr_bwk)
+```
+
+###LCC
+
+Run one with all LCC landcovers
+```{r}
+glmm_bwk_smr_lcc <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_summer)
+
+
+summary(glmm_bwk_smr_lcc)
+```
+
+####Tundra LCC
+
+tundra only landcovers
+```{r}
+glmm_bwk_smr_lcc_tundra <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_summer)
+
+
+summary(glmm_bwk_smr_lcc_tundra)
+```
+
+###DEM
+
+```{r}
+glmm_bwk_smr_dem <- glmer.nb(Caribou ~ 
+                    z.mean_elev_300 + z.mean_tri_300 + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_summer)
+
+
+summary(glmm_bwk_smr_dem)
+
+```
+
+###Target
+
+```{r}
+glmm_bwk_smr_tgt <- glmer.nb(Caribou ~ 
+                    target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_summer)
+
+
+summary(glmm_bwk_smr_tgt)
+
+```
+
+###Co-occurrences
+
+####Ungulates
+
+```{r}
+glmm_bwk_smr_ung <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_summer)
+
+
+summary(glmm_bwk_smr_ung)
+
+```
+
+####Predators
+
+```{r}
+glmm_bwk_smr_pred <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_summer)
+
+
+summary(glmm_bwk_smr_pred)
+
+```
+
+####Apparant Competition
+
+```{r}
+glmm_bwk_smr_app <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_summer)
+
+
+summary(glmm_bwk_smr_app)
+
+```
+
+###Significant Only
+
+with LCC
+```{r}
+glmm_bwk_smr_sig1 <- glmer.nb(Caribou ~ 
+                    Muskox + z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_summer)
+
+
+summary(glmm_bwk_smr_sig1)
+
+#remove muskox, no longer showing as significianct
+glmm_bwk_smr_sig2 <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_summer)
+
+
+summary(glmm_bwk_smr_sig2)
+
+```
+
+
+###Model Selection
+```{r}
+model.sel(glmm_bwk_smr_random, glmm_bwk_smr_random_eff, glmm_bwk_smr_bwk, glmm_bwk_smr_lcc_tundra, glmm_bwk_smr_dem, glmm_bwk_smr_tgt, glmm_bwk_smr_ung, glmm_bwk_smr_pred, glmm_bwk_smr_app, glmm_bwk_smr_sig1, glmm_bwk_smr_sig2)
+```
+
+####################################################################################################################################################################################################################
+
+#Fall, BIWEEKLY
+
+Create a fall biweekly dataframe
+```{r}
+# Create a new data frame for summer
+mod_dat_bwk_fall <- mod_dat_bwk[mod_dat_bwk$four_season == "Fall", ]
+```
+
+###Simple Models
+
+simple models for comparisons sake
+```{r}
+# GLMM with only a random effect
+glmm_bwk_fall_random <- glmer.nb(Caribou ~ 1 + (1 | location_site), data = mod_dat_bwk_fall)
+
+summary(glmm_bwk_fall_random)
+
+#GLMM with random and survey effort
+
+glmm_bwk_fall_random_eff <- glmer.nb(Caribou ~ 1 +  offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_bwk_fall)
+
+summary(glmm_bwk_fall_random_eff)
+
+```
+
+simple models with temporal aspects
+```{r}
+#GLMM with biweek
+glmm_bwk_fall_bwk <- glmer.nb(Caribou ~ biweek +  offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_bwk_fall)
+
+summary(glmm_bwk_fall_bwk)
+```
+
+###LCC
+
+Run one with all LCC landcovers
+```{r}
+glmm_bwk_fall_lcc <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_fall)
+
+
+summary(glmm_bwk_fall_lcc)
+```
+
+####Tundra LCC
+
+tundra only landcovers
+```{r}
+glmm_bwk_fall_lcc_tundra <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_fall)
+
+
+summary(glmm_bwk_fall_lcc_tundra)
+```
+
+###DEM
+
+```{r}
+glmm_bwk_fall_dem <- glmer.nb(Caribou ~ 
+                    z.mean_elev_300 + z.mean_tri_300 + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_fall)
+
+
+summary(glmm_bwk_fall_dem)
+
+```
+
+###Target
+
+```{r}
+glmm_bwk_fall_tgt <- glmer.nb(Caribou ~ 
+                    target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_fall)
+
+
+summary(glmm_bwk_fall_tgt)
+
+```
+
+###Co-occurrences
+
+####Ungulates
+
+```{r}
+glmm_bwk_fall_ung <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_fall)
+
+
+summary(glmm_bwk_fall_ung)
+
+```
+
+####Predators
+
+```{r}
+glmm_bwk_fall_pred <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_fall)
+
+
+summary(glmm_bwk_fall_pred)
+
+```
+
+####Apparant Competition
+
+```{r}
+glmm_bwk_fall_app <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_fall)
+
+
+summary(glmm_bwk_fall_app)
+
+```
+
+###Significant Only
+
+with LCC
+```{r}
+glmm_bwk_fall_sig1 <- glmer.nb(Caribou ~ 
+                    Muskox + z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_fall)
+
+
+summary(glmm_bwk_fall_sig1)
+
+#remove muskox, no longer showing as significianct
+glmm_bwk_fall_sig2 <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_fall)
+
+
+summary(glmm_bwk_fall_sig2)
+
+```
+
+
+###Model Selection
+```{r}
+model.sel(glmm_bwk_fall_random, glmm_bwk_fall_random_eff, glmm_bwk_fall_bwk, glmm_bwk_fall_lcc, glmm_bwk_fall_lcc_tundra, glmm_bwk_fall_dem, glmm_bwk_fall_tgt, glmm_bwk_fall_ung, glmm_bwk_fall_pred, glmm_bwk_fall_app, glmm_bwk_fall_sig1, glmm_bwk_fall_sig2)
+```
+
+
+####################################################################################################################################################################################################################
+
+#Winter BIWEEKLY
+
+Create a summer only dataframe
+```{r}
+# Create a new data frame for winter
+mod_dat_bwk_winter <- mod_dat_bwk[mod_dat_bwk$four_season == "Winter", ]
+```
+
+###Simple Models
+
+simple models for comparisons sake
+```{r}
+# GLMM with only a random effect
+glmm_bwk_wtr_random <- glmer.nb(Caribou ~ 1 + (1 | location_site), data = mod_dat_bwk_winter)
+
+summary(glmm_bwk_wtr_random)
+
+#GLMM with random and survey effort
+
+glmm_bwk_wtr_random_eff <- glmer.nb(Caribou ~ 1 +  offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_bwk_winter)
+
+summary(glmm_bwk_wtr_random_eff)
+
+```
+
+simple models with temporal aspects
+```{r}
+#GLMM with biweek
+glmm_bwk_wtr_bwk <- glmer.nb(Caribou ~ biweek +  offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_bwk_winter)
+
+summary(glmm_bwk_wtr_bwk)
+```
+
+###LCC
+
+Run one with all LCC landcovers
+```{r}
+glmm_bwk_wtr_lcc <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_winter)
+
+
+summary(glmm_bwk_wtr_lcc)
+```
+
+####Tundra LCC
+
+tundra only landcovers
+```{r}
+glmm_bwk_wtr_lcc_tundra <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_winter)
+
+
+summary(glmm_bwk_wtr_lcc_tundra)
+```
+
+####"Tundra-ness"
+
+tundra only consolidated landcovers
+```{r}
+glmm_bwk_wtr_tundra <- glmer.nb(Caribou ~ 
+                    z.TUNDRA + z.X300_WET + z.X300_WAT + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_winter)
+
+
+summary(glmm_bwk_wtr_tundra)
+
+```
+
+###DEM
+
+```{r}
+glmm_bwk_wtr_dem <- glmer.nb(Caribou ~ 
+                    z.mean_elev_300 + z.mean_tri_300 + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_winter)
+
+
+summary(glmm_bwk_wtr_dem)
+
+```
+
+###Target
+
+```{r}
+glmm_bwk_wtr_tgt <- glmer.nb(Caribou ~ 
+                    target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_winter)
+
+
+summary(glmm_bwk_wtr_tgt)
+
+```
+
+###Co-occurrences
+
+####Ungulates
+
+```{r}
+glmm_bwk_wtr_ung <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_winter)
+
+
+summary(glmm_bwk_wtr_ung)
+
+```
+
+####Predators
+
+```{r}
+glmm_bwk_wtr_pred <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_winter)
+
+
+summary(glmm_bwk_wtr_pred)
+
+```
+
+####Apparant Competition
+
+```{r}
+glmm_bwk_wtr_app <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_winter)
+
+
+summary(glmm_bwk_wtr_app)
+
+```
+
+###Significant Only
+
+with LCC
+```{r}
+glmm_bwk_wtr_sig1 <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + z.X300_MF + z.mean_elev_300 + z.mean_tri_300 + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_winter)
+
+
+summary(glmm_bwk_wtr_sig1)
+
+#remove dem, no longer showing as significianct
+glmm_bwk_wtr_sig2 <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + z.X300_MF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_winter)
+
+
+summary(glmm_bwk_wtr_sig2)
+
+```
+
+Consolidated
+
+```{r}
+glmm_bwk_wtr_sig_cons1 <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + z.TUNDRA + z.X300_WET + z.X300_WAT + z.mean_elev_300 + z.mean_tri_300 + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_winter)
+
+
+summary(glmm_bwk_wtr_sig_cons1)
+
+#remove dem, no longer showing as significianct
+glmm_bwk_wtr_sig_cons2 <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + z.TUNDRA + z.X300_WET + z.X300_WAT + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_winter)
+
+
+summary(glmm_bwk_wtr_sig_cons2)
+```
+
+###Model Selection
+```{r}
+model.sel(glmm_bwk_wtr_random, glmm_bwk_wtr_random_eff, glmm_bwk_wtr_bwk, glmm_bwk_wtr_lcc, glmm_bwk_wtr_lcc_tundra, glmm_bwk_wtr_dem, glmm_bwk_wtr_tgt, glmm_bwk_wtr_ung, glmm_bwk_wtr_pred, glmm_bwk_wtr_app, glmm_bwk_wtr_sig1, glmm_bwk_wtr_sig2, glmm_bwk_wtr_sig_cons1, glmm_bwk_wtr_sig_cons2)
+```
+
+
+####################################################################################################################################################################################################################
+
+#Spring, BIWEEKLY
+
+Create a spring biweekly dataframe
+```{r}
+# Create a new data frame for summer
+mod_dat_bwk_spring <- mod_dat_bwk[mod_dat_bwk$four_season == "Spring", ]
+```
+
+###Simple Models
+
+simple models for comparisons sake
+```{r}
+# GLMM with only a random effect
+glmm_bwk_spri_random <- glmer.nb(Caribou ~ 1 + (1 | location_site), data = mod_dat_bwk_spring)
+
+summary(glmm_bwk_spri_random)
+
+#GLMM with random and survey effort
+
+glmm_bwk_spri_random_eff <- glmer.nb(Caribou ~ 1 +  offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_bwk_spring)
+
+summary(glmm_bwk_spri_random_eff)
+
+```
+
+simple models with temporal aspects
+```{r}
+#GLMM with biweek
+glmm_bwk_spri_bwk <- glmer.nb(Caribou ~ biweek +  offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_bwk_spring)
+
+summary(glmm_bwk_spri_bwk)
+```
+
+###LCC
+
+Run one with all LCC landcovers
+```{r}
+glmm_bwk_spri_lcc <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_spring)
+
+
+summary(glmm_bwk_spri_lcc)
+```
+
+####Tundra LCC
+
+tundra only landcovers
+```{r}
+glmm_bwk_spri_lcc_tundra <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_spring)
+
+
+summary(glmm_bwk_spri_lcc_tundra)
+```
+
+###DEM
+
+```{r}
+glmm_bwk_spri_dem <- glmer.nb(Caribou ~ 
+                    z.mean_elev_300 + z.mean_tri_300 + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_spring)
+
+
+summary(glmm_bwk_spri_dem)
+
+```
+
+###Target
+
+couldn't get this to run
+```{r}
+#glmm_bwk_spri_tgt <- glmer.nb(Caribou ~ 
+                    #target_cons + biweek + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_spring)
+
+
+#summary(glmm_bwk_spri_tgt)
+
+```
+
+###Co-occurrences
+
+####Ungulates
+
+```{r}
+glmm_bwk_spri_ung <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_spring)
+
+
+summary(glmm_bwk_spri_ung)
+
+```
+
+####Predators
+
+```{r}
+glmm_bwk_spri_pred <- glmer.nb(Caribou ~ 
+                    Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_spring)
+
+
+summary(glmm_bwk_spri_pred)
+
+```
+
+####Apparant Competition
+
+```{r}
+glmm_bwk_spri_app <- glmer.nb(Caribou ~ 
+                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_spring)
+
+
+summary(glmm_bwk_spri_app)
+
+```
+
+###Significant Only
+
+with LCC
+```{r}
+glmm_bwk_spri_sig1 <- glmer.nb(Caribou ~ 
+                    Muskox + z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_spring)
+
+
+summary(glmm_bwk_spri_sig1)
+
+#remove muskox, no longer showing as significant
+glmm_bwk_spri_sig2 <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_bwk_spring)
+
+
+summary(glmm_bwk_spri_sig2)
+
+```
+
+
+###Model Selection
+```{r}
+model.sel(glmm_bwk_spri_random, glmm_bwk_spri_random_eff, glmm_bwk_spri_bwk, glmm_bwk_spri_lcc, glmm_bwk_spri_lcc_tundra, glmm_bwk_spri_dem, glmm_bwk_spri_ung, glmm_bwk_spri_pred, glmm_bwk_spri_app, glmm_bwk_spri_sig1, glmm_bwk_spri_sig2)
+```
+
+##########################################################################################################################################################################################################################################################################################################################################
+
+
+# Caribou Sites Only
+
+Subset detection data to only the clusters which captured caribou at a least one of their cameras. Must be subset after joining with covariates to filter by location_site. Must decide on response variable time (i.e. week, biweek) before trying this to cut down on time. 
+
+weekly caribou data
+```{r}
+# Subset mod_dat_wk based on Caribou greater than 0
+mod_dat_wk_crbou <- mod_dat_wk[mod_dat_wk$Caribou > 0, ]
+
+# Check the structure
+str(mod_dat_wk_crbou)
+
+# View the first few rows
+head(mod_dat_wk_crbou)
+```
+
+biweekly caribou data
+```{r}
+# Subset mod_dat_wk based on Caribou greater than 0
+#mod_dat_bwk_crbou <- mod_dat_bwk[mod_dat_bwk$Caribou > 0, ]
+
+# Check the structure
+#str(mod_dat_bwk_crbou)
+
+# View the first few rows
+#head(mod_dat_bwk_crbou)
+```
+
+Which models do I realistically NEED to redo at the local scale. Do I need to run target and stuff
+
+I think weekly is probably the way to go. it's a good balance of high detail without being so coarse as to become irrelevant for species co-occurrences. It also provides adequate survey replicas when running 4 separate seasonal models
+
+# Local, Multiseason, WEEK
+
+Simple Models
+```{r}
+# GLMM with only a random effect
+glmm_wk_random <- glmer.nb(Caribou ~ 1 + (1 | location_site), data = mod_dat_wk)
+
+summary(glmm_wk_random)
+
+#GLMM with random and survey effort
+
+glmm_wk_random_eff <- glmer.nb(Caribou ~ 1 +  offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_wk)
+
+summary(glmm_wk_random_eff)
+```
+
+Temporal models
+```{r}
+#GLMM with random, survey effort, snow season
+glmm_wk_snowssn <- glmer.nb(Caribou ~ 1 + snow_season + offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_wk)
+
+summary(glmm_wk_snowssn)
+
+#GLMM with random, survey effort, four season
+glmm_wk_fourssn <- glmer.nb(Caribou ~ 1 + four_season + offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_wk)
+
+summary(glmm_wk_fourssn)
+
+#GLMM with random, survey effort, week.
+glmm_wk_wk <- glmer.nb(Caribou ~ 1 + week + offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_wk)
+
+summary(glmm_wk_wk)
+```
+
+### LCC
+```{r}
+glmm_wk_lcc <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk)
+
+
+summary(glmm_wk_lcc)
+```
+
+####Tundra LCC
+```{r}
+glmm_wk_lcc_tundra <- glmer.nb(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk)
+
+
+summary(glmm_wk_lcc_tundra)
+```
+
+#NOTE: 2024-02-25 #######################################################
+Removed multispecies models because the committee didn't want to go down this route...

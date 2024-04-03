@@ -1,0 +1,535 @@
+---
+title: "7. Analysis_data_exploration"
+output: html_document
+date: "2023-07-29"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Modified from C.Beirne CMI Workshop script
+
+#Load packages
+```{r}
+project<-"TDN"
+version<-"v15"
+
+# Check you have them and load them
+list.of.packages <- c("kableExtra", "tidyr", "leaflet", "dplyr", "viridis", "corrplot", "lubridate", "plotly","stringr")
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+lapply(list.of.packages, require, character.only = TRUE)
+```
+
+# 7.1 Final locations plot
+
+Change category to any column name to visualize on map
+```{r}
+locs <- read.csv("Processed_Data/TDN_camera_locations_and_covariates_cleaned.csv")
+
+# If you want to color by a category do it here:
+category <- "dom_habitat_lcc_hexagon"
+# First lets choose a category to color
+locs[,category] <- factor(locs[,category])
+col.cat <- turbo(length(levels(locs[,category])))
+# Add it to the dataframe
+locs$colours <- col.cat[locs[,category]]
+
+m <- leaflet() %>%
+  # Add a satellite image layer
+  addProviderTiles(providers$Esri.WorldImagery, group="Satellite") %>%  
+  addProviderTiles(providers$Esri.WorldTopoMap, group="Base") %>%     
+  addCircleMarkers(lng=locs$longitude, lat=locs$latitude,
+                   # Color the markers depending on the 'feature type'
+                   color=locs$colours,
+                   # Add a popup of the deployment code 
+                   popup=paste(locs$location, locs[,category])) %>%
+  # Add a legend explaining what is going on
+  addLegend("bottomleft", colors = col.cat,  labels = levels(locs[,category]),
+    title = category,
+    labFormat = labelFormat(prefix = "$"),
+    opacity = 1
+  ) %>%
+  # add a layer control box to toggle between the layers
+  addLayersControl(
+    baseGroups = c("Satellite", "Base"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+m
+```
+
+#7.2 Independent detections summary
+
+When you are writing papers or reports based on camera data, it is useful to have a capture summary table in the main text or as an appendix. We will use the species list we created to append summary information to:
+
+```{r}
+# Also read in the species list
+sp_summary <- read.csv("Processed_Data/TDN_CAM_Species_List_v14.csv", header=T)
+
+#load species rank class data so we can drop non species data???
+sp_rank<-read.csv("Raw_Data/TDN_CAM_Species_rank_class_v2.csv")
+sp_rank<-subset(sp_rank, select = -species_scientific_name) #remove scientific name to avoid muck up during join later on
+
+#change sp_rank to sp_summary names
+sp_rank[sp_rank$species_common_name == "Beaver","species_common_name"] <- "American Beaver"
+sp_rank[sp_rank$species_common_name == "Gray Jay", "species_common_name"] <- "Canada Jay"
+sp_rank[sp_rank$species_common_name == "Bald eagle", "species_common_name"] <- "Bald Eagle"
+
+# change barren-ground to just caribou
+sp_rank[sp_rank$species_common_name == "Barren-ground Caribou","species_common_name"] <- "Caribou"
+#sp_rank[sp_rank$species_common_name == "Caribou","species_scientific_name"] <- "Rangifer tarandus"
+sp_rank[sp_rank$species_common_name == "Caribou","species_rank"] <- "Species"
+
+```
+
+##7.2.1 Total number of captures
+
+To summaries the wildlife detections in this project we can make use of the ...total_observations.csv files:
+
+##NOTE: 2023-12-28
+Most of this code is outdated, can just use dataframes created in 1c. wildRtrax.R 
+
+```{r}
+#ind_det <- tdn_wt_ind_det
+
+#ind_det_raw <- read.csv("Processed_Data/TDN_CAM_Independent_Detections_v14.csv", header=T)
+
+#join species rank to get rid of those levels later
+#ind_det_tmp<-left_join(ind_det_raw,sp_rank,by="species_common_name")
+
+#remove detections not at the species level
+#tmp <- ind_det_tmp$species_rank %in% c("Species", "Subspecies")
+#ind_det_tmp <- subset(ind_det_tmp, tmp)
+
+#ind_det_tmp <- subset(ind_det_tmp, ind_det_tmp$species_class == "MAMMALIA") #subset to mammals
+#ind_det_tmp <- subset(ind_det_tmp, ind_det_tmp$species_scientific_name != "Homo sapiens") #remove humans
+
+#ind_det <- ind_det_tmp %>% filter(!image_fov == "Out of Range") #filter out "Out of Range" 
+#unique(ind_det$image_fov) #check fov values after the filter
+
+
+#rm(ind_det_tmp) #clean up
+```
+
+Need to create new dataframe with the total number of independent detections per species per site as follows for the CMI script:
+
+placename	days	sp	        count
+ALG027	  358	  Alces.alces 4
+
+```{r}
+#long_obs <- ind_det %>% 
+  #group_by(location,species_common_name) %>% 
+  #summarise(count=n(),.groups='drop') %>% #summarize number of independent detection per station
+  #as.data.frame()
+
+#long_obs
+```
+
+It is often easier to use this long format to make summaries:
+
+```{r}
+# We can them summaries those using dplyr
+#tmp <- long_obs %>%                   # Take the long observation data frame `long_obs` 
+          #group_by(species_common_name) %>%            # Group by species
+          #summarise(count=sum(count)) # Sum all the independent observations
+
+# Add it to the sp_summary dataframe
+#sp_summary <- left_join(sp_summary, tmp)
+```
+
+We need a wide version of this df to use in the rest of the CMI script, I realize this is a bit backwards.
+
+```{r}
+#total_obs<- long_obs %>% 
+  #pivot_wider(names_from = species_common_name,values_from = count) %>% 
+  #replace(is.na(.), 0)
+```
+
+We need to add a 'days' column which has the survey effort for each location for later on in this exploration script. This can be found in the image_set_report generated by WildTrax, in the image_set_count_timelapse column, though there are locations with multiple image sets. 
+
+```{r}
+#load data
+#camera_effort <-read.csv("Processed_Data/WildCo/TDN_camera_effort.csv")
+
+#join to total_obs
+#total_obs <- right_join(total_obs, camera_effort, by = "location")
+
+#change total_obs species column names to get rid of space and replace with .
+#names(total_obs)<-make.names(names(total_obs),unique=TRUE)
+
+#change column name for dates
+#total_obs$days<-total_obs$mean_dates
+#total_obs$mean_dates<-NULL
+
+#replace NAs with 0 
+#total_obs <- replace(total_obs, is.na(total_obs), 0)
+
+##### 06/12/2023: COULDNT GET THIS TO WORK
+#sort by location
+# Assuming df1 and df2 are your two dataframes
+# Assuming you want to sort the "category" column in df1 based on the order in df2
+
+# Get unique levels from camera_effort
+#custom_levels <- unique(camera_effort$location)
+
+# Convert the "category" column in df1 to a factor with custom levels
+#total_obs$location <- factor(total_obs$location, levels = custom_levels, ordered = TRUE)
+
+# Print the resulting dataframe df1
+#print(total_obs)
+
+#write the total_obs dataframe for use in other CMI scripts
+#write.csv(total_obs,paste0("Processed_Data/WildCo/",project,"_total_obs_",version, ".csv"), row.names = F)
+```
+
+
+#read total_obs dataframe created in wildrtrax (TDN_cam_summaries_full)
+rather than the makeshift script created above
+```{r}
+total_obs<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_full.csv")
+```
+
+## 7.2.2 Raw occupancy
+
+We can very quickly flip a count to a presence/absence using as.logical this converts all integers to 1 and keeps 0’s as 0!
+
+###NOTE: 2023-07-29, American wigeon and Cackling goose mucking things up, went and added mass to .rmd 1b and info to species_RANK_CLASS.CSV so should be good to go for next data download.
+
+```{r}
+#change formatting to get the two sets to work together  
+sp_summary$species_common_name<-str_replace_all(sp_summary$species_common_name, " ", ".")
+sp_summary$species_common_name<-str_replace_all(sp_summary$species_common_name, "-", ".")
+sp_summary$species_common_name<-str_replace_all(sp_summary$species_common_name, "'", ".")
+
+#remove humans from sp_summary
+sp_summary <- sp_summary[sp_summary$species_common_name != "Human", ]
+
+# We use the mutate function to mutate the column
+total_binary <-  total_obs %>%    # The total obs dataframe              
+                    mutate(across(sp_summary$species_common_name, ~+as.logical(.x)))  # across all of the species columns, make it binary
+
+# Flip the dataframe to longer - as before
+long_bin <- total_binary %>% 
+  pivot_longer(cols=sp_summary$species_common_name, names_to="species_common_name", values_to = "count") # Takes the species names columns, and makes them unique rows with "sp" as the key 
+
+#remove columns 3-16 which correspond to non-species tags and muck things up
+long_bin <- long_bin[, -c(3:16)]
+```
+
+Now when we do the same calculations, as before, we can calculate the number of sites occupied:
+
+```{r}
+# We can now sum the presence/absences and divide by the number of survey locations
+tmp <- long_bin %>% 
+  group_by(species_common_name) %>% 
+  summarise(occupancy=sum(count)/nrow(locs)) # divided the sum by the number of stations
+
+# add the results to the sp_summary
+sp_summary <- left_join(sp_summary, tmp)
+```
+
+
+### 7.2.2.1 Subsetting mammals
+
+```{r}
+sp_summary_mam <- filter(sp_summary, species_class == 'Mammalia')
+```
+
+
+
+## 7.2.3 Comparison plot
+
+Then we can use the dataframe created above to summaries the detections and the occupancy patterns.
+
+Note - here we weave two plotly graphs together using the subplot() function!
+
+###NOTE: 2023-12-28
+Fig1 is incorrect! Need to sum counts of each species across locations to find 
+number of cameras captured at, or could replace left figure with total number 
+of independent detections
+
+Could create long version of total obs and create independent detection dataframe
+```{r}
+# Lets put the dataframes in a sensible order
+sp_summary_mam <- sp_summary_mam[order(sp_summary_mam$occupancy),]
+
+yform <- list(categoryorder = "array",
+              categoryarray = sp_summary_mam$species_common_name)
+
+xform <- list(title="Captures")
+
+# Capture rate
+fig1 <- plot_ly(x = sp_summary_mam$count, y = sp_summary_mam$species_common_name, type = 'bar', orientation = 'h') %>% 
+ layout(yaxis = yform, xaxis=xform)
+
+yform <- list(categoryorder = "array",
+              categoryarray = sp_summary_mam$species_common_name,
+              showticklabels=F)
+xform <- list(title="Occupancy")
+
+
+# Occupancy
+fig2 <- plot_ly(x = sp_summary_mam$occupancy, y = sp_summary_mam$species_common_name, type = 'bar', orientation = 'h') %>% 
+ layout(yaxis = yform, xaxis=xform)
+
+subplot(nrows=1,fig1, fig2, titleX = T) # We could stack them on top of one another using nrows=2
+```
+What does this output tell you about species-specific occurrences across the landscape?
+
+Captures = Independent Detections
+Occupancy = Proportion of cameras/stations detected
+
+# 7.3 Temporal patterns in capture rates
+
+Next lets summarize the temporal patterns in the number of sites (placenames) surveyed, and the total number of animals captured. We will use the monthly dataframes in order to do this, but you could do it at the weekly or daily scale if required!
+
+```{r}
+mon_obs <- read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_month_mam.csv", header=T)
+```
+
+We will first count the number of survey nights each location was active, then in the second step add the number of species detections.
+
+```{r}
+# Count up the number of stations and the number of camera nights
+mon_summary <- mon_obs %>%                  # Use the monthly observations dataframe
+            group_by(year,month) %>%              # Group by the date
+            summarise(locs_active=n(),      # Count the number of active cameras
+                      cam_days=sum(n_days_effort))   # And sum the active days 
+
+
+# Add in the species specific counts - and join it with the mon_summary dataframe
+mon_summary <- mon_obs %>% 
+                group_by(year,month) %>%  
+                summarise(across(sp_summary_mam$species_common_name, sum, na.rm=TRUE)) %>% # summarise across all of 
+                                                                      # the species columns 
+                left_join(x=mon_summary)   # Join with the mon_summary dataframe
+```
+
+Now lets use lubridate to convert the timestamp column to a date object and plot the output.
+
+Each black dot represents the number of survey nights or average capture rate, respectively.
+```{r}
+#create date column in the ym format (e.g. 2021-07)
+mon_summary <- mon_summary %>%
+  mutate(date = paste(year, sprintf("%02d", month), sep = "-"))
+
+# We first need to convert the date column to a date object
+mon_summary$date <- ym(mon_summary$date)
+
+# Set up a two panel plot (side by side)
+par(mfrow=c(1,2))
+
+plot(mon_summary$date, mon_summary$locs_active,
+     type="o", 
+     pch=19,
+     ylim=c(0, max(mon_summary$locs_active)),
+     las=1, 
+     ylab="Number of cameras active", xlab="Date")
+
+
+# Sum all the captures rates for the species columns
+mon_summary$all.sp <- rowSums(mon_summary[, sp_summary_mam$species_common_name])
+
+# Plot them
+plot(mon_summary$date, mon_summary$all.sp/(mon_summary$cam_days/100),
+     type="o",
+     pch=19,
+     las=1, ylab="Detections per 100 cam days", xlab="Date")
+```
+
+Exclude months with fewer than 100 cam days
+
+One month, 2021-07, is mucking things up because there are only 18 active camera days across only 6 active cameras 
+```{r}
+# Exclude the specific date
+filtered_mon_summary <- subset(mon_summary, date != "2021-07-01")
+
+# Set up a two-panel plot (side by side)
+par(mfrow=c(1,2))
+
+# Plot 1
+plot(filtered_mon_summary$date, filtered_mon_summary$locs_active,
+     type="o", 
+     pch=19,
+     ylim=c(150, max(filtered_mon_summary$locs_active)), #change lower limit of ylim
+     las=1, 
+     ylab="Number of cameras active", xlab="Date")
+
+# Sum all the captures rates for the species columns
+filtered_mon_summary$all.sp <- rowSums(filtered_mon_summary[, sp_summary_mam$species_common_name])
+
+# Plot 2
+plot(filtered_mon_summary$date, filtered_mon_summary$all.sp/(filtered_mon_summary$cam_days/100),
+     type="o",
+     pch=19,
+     las=1, ylab="Detections per 100 cam days", xlab="Date")
+```
+
+
+# 7.4 Species-specific capture rates
+
+We should now split up this overall capture rate, and explore temporal patterns in species-specific detections. We can do this by looping the code with a for() loop.
+
+```{r}
+#par(mfrow=c(2,2))
+i <- 1
+for(i in 1:length(sp_summary_mam$species_common_name))
+{
+  plot(mon_summary$date, pull(mon_summary, sp_summary_mam$species_common_name[i])/(mon_summary$cam_days/100),  # The pull command allows you to grab a specific column in a dataframe and turn it into a vector!
+     type="o",
+     pch=19,
+     las=1, ylab="Detections per 100 cam days", xlab="Date",
+     main=sp_summary_mam$species_common_name[i])
+}
+```
+
+Can you see any interesting patterns in here? What do black bears do in winter? What time of year do we get the most marten detections?
+
+# 7.4 Spatial patterns in capture rates
+
+We also often want to explore if there are any spatial patterns in capture rates, these can hint at any ecological relationships we might want to explore further. 
+
+Here we make use of the ‘total_obs’ data frame we imported earlier. We also use the ‘locs’ dataframe.
+
+```{r}
+total_obs <- left_join(total_obs, locs)
+
+focal_species <- "Moose"
+
+focal_cr <- pull(total_obs, focal_species)/(total_obs$n_days_effort/100)
+
+m <- leaflet() %>%
+  addProviderTiles(providers$Esri.WorldTopoMap, group="Base") %>%     
+  addCircleMarkers(lng=locs$longitude, lat=locs$latitude,
+                   # Add a popup of the deployment code 
+                   popup=paste(locs$location),
+                   radius=(focal_cr/max(focal_cr)*10)+1, stroke=F,
+                   fillOpacity=0.6) 
+m
+```
+
+Try it for some different species. Can you see any different patterns?
+
+# 7.6 Species co-occurrences
+
+Camera trap data are being increasingly used to model multiple species communities. In the same way in which we used the corrplot package in the (analysis covariates section(#covariates), we can use it to explore the co-occurrence patterns of the species in the community.
+
+The plot below uses the ‘total_obs’ dataframe, and performs pairwise correlations between the species on the left, and the species on the top row.
+
+Blue colors = positive correlation -> at locations where you have high counts of one species, you also have high counts of the paired species.
+
+Red colors = negative correlation -> at locations where you have high counts of one species, then you are likely to have low counts of the species pair (or vice-versa).
+
+We implement a more nuanced form of this data analysis in the interactions chapter. To make this plot we use the total_obs dataframe.
+
+```{r}
+#subset focal sp from sp_summary_mam
+# Specify the species to include
+selected_species <- c("Caribou", "Muskox", "Moose", "Grizzly.Bear", "Gray.Wolf", "Wolverine", "Canada.Lynx","Black.Bear") #excluded Lynx and BBear due to lack of Caribou co-occurrences and wolf den station
+
+# Create sp_summary_focal by subsetting sp_summary_mam
+sp_summary_focal <- sp_summary_mam %>%
+  filter(species_common_name %in% selected_species)
+```
+
+
+```{r}
+# Reset the plot parameters
+par(mfrow=c(1,1))
+
+# Pull the data for each of the species from 
+tmp <- total_obs[, sp_summary_focal$species_common_name]
+M <- cor(tmp)
+
+corrplot(M, method="color", 
+         type="upper", 
+         order="hclust",
+         # addCoef.col = "black", # We suppress the coefs to make a cleaner plot
+         tl.col="black", tl.srt=45, tl.cex=1,#Text label color and rotation
+         diag=FALSE
+         )
+```
+
+What would you conclude?
+
+Strongest correlations when looking at clust_obs of full survey period. 
+
+Caribou: strongest negative correlation is Moose, BBear, lynx respectively, all boreal species (no co-occurrences at all with bbear or lynx). Slight negative correlation with Muskox could just be due to boreal muskox occurrences.
+
+strongest positive correlation is GBear, would be more interesting to only look at summer co-occurrences, likely see this correlation disappear. Slight positive correlation with wolves, likely weaker due to boreal wolf occurrences, might be stronger in a seasonal model.
+
+# 7.7 Covariate plots
+
+So far we have explored temporal and spatial patterns in species counts - but what about the effects of the covariates we derived in the analysis covariates section? Before embarking on an in depth analysis, it is always sensible to plot your response terms against predictors.
+
+Note we are often paranoid about “data dredging” or shopping around for “significant” predictors, as this isn’t good scientific practice. Here, we should only explore covariates for which we have a prior belief in there effects on the response term. We are not looking for significant relationships, rather trying to understand the structure of our data! You should know your data inside out before you start modelling.
+
+Final note just because you do not see a strong effect in your raw data, doesn’t mean that it will not have an effect in your final models, particularly if you plan to account for multiple confounding variables or use random effects!
+
+```{r}
+str(locs)
+```
+
+Before we proceed, it is good practice to convert categorical variables (like feature_type and lcc_habitats) to factors. There is a very easy way to do that using the mutate_if() function of dplyr:
+
+```{r}
+locs <- locs %>% 
+            mutate_if(is.character,as.factor) # If a column is a character string, make it a factor
+```
+
+Before we proceed, it is good practice to convert categorical variables (like feature_type and lcc_habitats) to factors. There is a very easy way to do that using the mutate_if() function of dplyr:
+
+```{r}
+total_obs <- left_join(total_obs, locs)
+```
+
+## 7.7.1 Continuous predictor 
+
+The best plot for two continuous predictors is a scatter plot.
+In base R:
+```{r}
+plot(data=total_obs, 
+       Caribou ~   # Y variable
+       mean_tri, # X variable
+       pch=19,
+       las=1
+     ) 
+```
+
+We can make the same plot in ggplot:
+```{r}
+ggplot(data=total_obs, 
+       aes(x=mean_tri, y=Caribou)) + 
+       geom_point() +                   # Specify a scatter plot
+       theme_classic()                  # A nice theme
+```
+
+The great thing about ggplot is that it is easy to add trend lines:
+```{r}
+ggplot(data=total_obs, 
+       aes(x=mean_tri, y=Caribou)) + 
+       geom_point() +                   # Specify a scatter plot
+       theme_classic() +  
+       geom_smooth(method=lm, se=T, fullrange=TRUE)   # A nice theme
+```
+
+# 7.7.2 Catagorical predictors
+
+For categorical predictors boxplots are very useful!
+
+Base R:
+```{r}
+boxplot(data=total_obs,
+          Caribou ~ dom_habitat_lcc_hexagon)
+```
+
+Or if ggplot is your thing:
+
+```{r}
+ggplot(total_obs, aes(x=dom_habitat_lcc_hexagon, y=Caribou)) +
+  geom_boxplot()+
+  theme_classic()
+```
+

@@ -1,0 +1,1618 @@
+---
+title: "6. Val_Covariate_Buffers"
+output: html_document
+date: "2023-07-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+A simple script to extract raster information from buffers around lat/long locations
+
+#Load Packages
+```{r}
+library(exactextractr)
+library(dplyr)
+library(sf)
+library(raster)
+library(tidyr)
+library(ggplot2)
+library(forcats)
+library(purrr)
+library(patchwork)
+library(mgcv)
+library(car)
+library(formattable)
+library(fuzzySim)
+```
+
+Load Data
+```{r}
+project<-"TDN"
+version<-"v16"
+
+#load camera location data
+cam_data<-read.csv("Raw_Data/TDN_camera_site_locations.csv")
+
+#Load up to date covariate data
+#cam_data<-read.csv("Processed_Data/TDN_camera_locations_and_covariates_v16.csv", header=T) #contains lat/long for camera and cluster centroid, as well as categorical covariates
+
+#Load boundary data
+TDN <- st_read("Spatial/Boundary_TDN/TDN_Boundary.shp")
+```
+
+#1. DUC Data
+
+##NOTE: Not likely using DUC data due to weird "Burn" landcover category
+Ducks Unlimited Canada 10m EWC landcover data
+```{r}
+#change location data to points and correct coordinate system
+cams_sf_duc<-st_as_sf(cam_data,coords=c("longitude","latitude"),crs=32612,remove=FALSE)
+plot(cams_sf_duc$geometry)
+
+#check distance between points
+st_distance(cams_sf_duc)
+
+#Load duc landcover raster data
+duc<-raster("Spatial/Landcover/DUC/DUC_Thaidene_Nene_Phase_01_Classification1.tif")
+
+#set coordinate system since none is attached to duc data
+#NOT WORKING YET, WAIT TO TALK WITH VAL
+#crs(duc)<-"+proj=utm +zone=12 +datum=WGS84 +units=m +no_defs +type=crs"
+
+#reproject points to duc crs
+#NOT WORKING YET, WAIT TO TALK WITH VAL
+#cam_sf<-st_transform(st_geometry(cam_point),crs=32612)
+
+#Load boundary data?
+TDN <- st_read("Spatial/Boundary_TDN/TDN_Boundary.shp")
+#no need to transform because its already in the same projection
+#TDN <- st_transform(duc, crs = 3580)
+
+plot(duc, axes = FALSE)
+plot(st_geometry(TDN), add = TRUE)
+```
+
+The land cover class descriptions are provided in a separate DBF file. We read this in to a data frame, then use levels() to associate the class descriptions with the raster.
+
+```{r}
+duc_classes <- foreign::read.dbf('Spatial/Landcover/DUC/DUC_Thaidene_Nene_Phase_01_Classification1.tif.vat.dbf', as.is = TRUE) %>%
+  dplyr::select(value = Value,
+                landcov = Class_Name)
+
+levels(duc) <- list(data.frame(ID = duc_classes$value,
+                               landcov = duc_classes$landcov))
+```
+
+```{r}
+factorValues(duc, c(2, 18, 24))
+```
+
+
+##1.1. Summarizing land cover classifications
+
+Across all of TDN
+```{r}
+landcov_mode <- exact_extract(duc, TDN, 'mode', 
+                              append_cols = 'Name', progress = FALSE) %>%
+  inner_join(duc_classes, by=c(mode = 'value'))
+```
+Open water is predominant landcover in TDN
+
+##1.2. Summary functions
+
+DUC tif file too large for this function? Make sure to close all programs and clear unused memory
+
+###1.2.1 Lancover by %
+```{r}
+duc_fracs <- exact_extract(duc, TDN, function(df) {
+  df %>%
+    mutate(frac_total = coverage_fraction / sum(coverage_fraction)) %>%
+    group_by(Name, value) %>%
+    summarize(freq = sum(frac_total))
+}, summarize_df = TRUE, include_cols = 'Name', progress = FALSE)
+
+head(duc_fracs)
+```
+
+```{r}
+duc_fracs %>%
+  inner_join(duc_classes, by = 'value') %>%
+  group_by(Name) %>%
+  arrange(desc(freq)) %>%
+  #slice_head(n = 3) %>%
+  mutate(freq = sprintf('%0.1f%%', 100*freq)) %>%
+  knitr::kable()
+```
+
+|Name          | value|freq  |landcov          |
+|:-------------|-----:|:-----|:----------------|
+|Thaidene Nene |     1|31.3% |Open Water       |
+|Thaidene Nene |    10|17.1% |Upland Shrub     |
+|Thaidene Nene |    17|15.4% |Burn             |
+|Thaidene Nene |     6|10.4% |Upland Conifer   |
+|Thaidene Nene |     3|9.1%  |Fen              |
+|Thaidene Nene |    12|7.8%  |Upland Barren    |
+|Thaidene Nene |    11|4.9%  |Upland Lichen    |
+|Thaidene Nene |     8|1.5%  |Upland Deciduous |
+|Thaidene Nene |     2|1.1%  |Marsh            |
+|Thaidene Nene |     5|0.7%  |Swamp            |
+|Thaidene Nene |     4|0.4%  |Bog              |
+|Thaidene Nene |     7|0.1%  |Upland Pine      |
+|Thaidene Nene |    13|0.1%  |Upland Other     |
+|Thaidene Nene |    15|0.0%  |Cloud            |
+|Thaidene Nene |    16|0.0%  |Shadow           |
+
+###1.2.2. Landcover by Area
+```{r}
+duc_areas <- exact_extract(duc, TDN, function(df) {
+  df %>%
+    group_by(Name, value) %>%
+    summarize(area_km2 = sum(coverage_area) / 1e6)
+}, summarize_df = TRUE, coverage_area = TRUE, include_cols = 'Name', progress = FALSE)
+```
+
+```{r}
+duc_areas %>%
+  inner_join(duc_classes, by = 'value') %>%
+  group_by(Name) %>%
+  arrange(desc(area_km2)) %>%
+  #slice_head(n = 3) %>%
+  #mutate(area_km2 = sprintf('%0.1f%%', 100*area_km2)) %>%
+  knitr::kable()
+```
+
+|Name          | value|   area_km2|landcov          |
+|:-------------|-----:|----------:|:----------------|
+|Thaidene Nene |     1| 8420.50046|Open Water       |
+|Thaidene Nene |    10| 4607.71506|Upland Shrub     |
+|Thaidene Nene |    17| 4127.81398|Burn             |
+|Thaidene Nene |     6| 2808.28733|Upland Conifer   |
+|Thaidene Nene |     3| 2444.51578|Fen              |
+|Thaidene Nene |    12| 2098.02482|Upland Barren    |
+|Thaidene Nene |    11| 1316.45924|Upland Lichen    |
+|Thaidene Nene |     8|  401.69751|Upland Deciduous |
+|Thaidene Nene |     2|  286.38747|Marsh            |
+|Thaidene Nene |     5|  178.67099|Swamp            |
+|Thaidene Nene |     4|  111.30753|Bog              |
+|Thaidene Nene |     7|   39.68320|Upland Pine      |
+|Thaidene Nene |    13|   32.62863|Upland Other     |
+|Thaidene Nene |    15|    0.59310|Cloud            |
+|Thaidene Nene |    16|    0.27880|Shadow           |
+
+
+
+#2. LCC Data
+
+Land Cover Canada 2020 300m data
+
+```{r}
+lcc<-raster("Spatial/Landcover/Natural Resources Canada/landcover-2020-classification.tif")
+
+#change location data to points and correct coordinate system
+cams_sf<-st_as_sf(cam_data,coords=c("longitude","latitude"),crs=4326,remove=FALSE)
+cams_sf_lcc<-st_transform(cams_sf,crs=st_crs(lcc))
+plot(cams_sf_lcc$geometry)
+
+#check distance between points
+st_distance(cams_sf_lcc)
+
+#Transform boundary data
+#not sure if this is the correct crs
+TDN_lcc <- st_transform(TDN, crs = st_crs(lcc))
+
+lcc_cropped<-crop(lcc,TDN_lcc)
+plot(lcc_cropped, axes = FALSE)
+plot(st_geometry(TDN_lcc), add = TRUE)
+plot(st_geometry(cams_sf_lcc),add = TRUE)
+#change lcc resolution, redo all analysis with this
+#do we actually need to do this if we don't use DUC data as well?
+#takes a long time to change resolution
+#lcc_10<-disaggregate(lcc,fact=3)
+```
+
+```{r}
+lcc_classes<-read.csv("Spatial/Landcover/Natural Resources Canada/lcc_2020_classes.csv")
+
+#value<- c(1,2,5,6,8,10:19)
+#landcov<- c("Temperate or sub-polar needleleaf forest","Sub-polar taiga needleleaf forest","Temperate or sub-polar broadleaf deciduous forest","Mixed Forest","Temperate or sub-polar shrubland","Temperate or sub-polar grassland","Sub-polar or polar shrubland-lichen-moss","Sub-polar or polar grassland-lichen-moss","Sub-polar or polar barren-lichen-moss","Wetland","Cropland","Barren Lands","Urban and Built-up","Water","Snow and Ice")
+#lcc_classes <- data.frame(value,landcov) 
+
+#levels(lcc) <- list(data.frame(ID = lcc_classes$value,
+                              # landcov = lcc_classes$landcov))
+```
+
+```{r}
+#factorValues(lcc, c(2, 18, 24))
+```
+
+
+##2.1. Summarizing land cover classifications
+
+Across all of TDN
+```{r}
+landcov_mode <- exact_extract(lcc, TDN_lcc, 'mode', 
+                              append_cols = 'Name', progress = FALSE) %>%
+  inner_join(lcc_classes, by=c(mode = 'value'))
+```
+Water is predominant landcover in TDN
+
+##2.2. Summary functions
+
+###2.2.1. Lancover by %
+
+```{r}
+landcov_percent <- exact_extract(lcc, TDN_lcc, function(df) {
+  df %>%
+    mutate(frac_total = coverage_fraction / sum(coverage_fraction)) %>%
+    group_by(Name, value) %>%
+    summarize(freq = sum(frac_total))
+}, summarize_df = TRUE, include_cols = 'Name', progress = FALSE)
+
+head(landcov_percent)
+```
+
+```{r}
+landcov_percent %>%
+  inner_join(lcc_classes, by = 'value') %>%
+  group_by(Name) %>%
+  arrange(desc(freq)) %>%
+  #slice_head(n = 3) %>%
+  mutate(freq = sprintf('%0.1f%%', 100*freq)) %>%
+  knitr::kable()
+```
+
+| value|freq  |class                                             |code   |
+|-----:|:-----|:-------------------------------------------------|:------|
+|  |    18|33.6% |Water                                             |WAT    |
+|  |    11|21.7% |Sub-polar or polar shrubland-lichen-moss          |SPPSLM |
+|  |     1|13.7% |Temperate or sub-polar needleleaf forest          |TSPNF  |
+|  |    10|11.7% |Temperate or sub-polar grassland                  |TSPG   |
+|  |    14|5.6%  |Wetland                                           |WET    |
+|  |    12|5.5%  |Sub-polar or polar grassland-lichen-moss          |SPPGLM |
+|  |     6|4.0%  |Mixed forest                                      |MF     |
+|  |     8|1.8%  |Temperate or sub-polar shrubland                  |TSPS   |
+|  |    16|1.7%  |Barren lands                                      |BAR    |
+|  |     2|0.7%  |Sub-polar taiga needleleaf forest                 |SPTNF  |
+|  |     5|0.0%  |Temperate or sub-polar broadleaf deciduous forest |TSPBDF |
+|  |    13|0.0%  |Sub-polar or polar barren-lichen-moss             |SPPBLM |
+
+
+###2.2.2. Landcover by Area
+```{r}
+landcov_areas <- exact_extract(lcc, TDN_lcc, function(df) {
+  df %>%
+    group_by(Name, value) %>%
+    summarize(area_km2 = sum(coverage_area) / 1e6)
+}, summarize_df = TRUE, coverage_area = TRUE, include_cols = 'Name', progress = FALSE)
+```
+
+```{r}
+landcov_areas %>%
+  inner_join(lcc_classes, by = 'value') %>%
+  group_by(Name) %>%
+  arrange(desc(area_km2)) %>%
+  #slice_head(n = 3) %>%
+  #mutate(area_km2 = sprintf('%0.1f%%', 100*area_km2)) %>%
+  knitr::kable()
+```
+
+| value|    area_km2|class                                             |code   |
+||-----:|-----------:|:-------------------------------------------------|:------|
+| |    18| 8496.447406|Water                                             |WAT    |
+| |    11| 5479.493175|Sub-polar or polar shrubland-lichen-moss          |SPPSLM |
+| |     1| 3453.046049|Temperate or sub-polar needleleaf forest          |TSPNF  |
+| |    10| 2968.282900|Temperate or sub-polar grassland                  |TSPG   |
+| |    14| 1419.291275|Wetland                                           |WET    |
+| |    12| 1383.161823|Sub-polar or polar grassland-lichen-moss          |SPPGLM |
+| |     6|  999.863744|Mixed forest                                      |MF     |
+| |     8|  460.243615|Temperate or sub-polar shrubland                  |TSPS   |
+| |    16|  436.109675|Barren lands                                      |BAR    |
+| |     2|  184.766156|Sub-polar taiga needleleaf forest                 |SPTNF  |
+| |     5|    3.622447|Temperate or sub-polar broadleaf deciduous forest |TSPBDF |
+| |    13|    0.187200|Sub-polar or polar barren-lichen-moss             |SPPBLM |
+
+###2.2.3. LCC Distribution
+```{r}
+landcov_areas_plot<-landcov_areas %>%
+  inner_join(lcc_classes, by = 'value') %>%
+  arrange(desc(area_km2)) 
+
+#plot distribution of landcover types across entire PA
+ggplot(landcov_areas_plot,aes(x=reorder(code,-area_km2),y=area_km2))+
+  geom_bar(stat = "identity")
+
+#plot frequency of each dominant landcover type across cameras
+ggplot(cam_data,aes(x=dom_habitat_lcc_hexagon))+
+  geom_bar()
+
+```
+
+When looking at the dominant LCC classes in 1km hexagons (which were used to originally determine survey sites based on habitat stratification for the DUC dataset), WET seems severely underrepresented because it must be widely distributed despite having a larger total area. Only 2 clusters selected within dominant WET hexagons. In the survey design which used DUC, 11 clusters were within hexagons dominated by wetland classes. 
+
+WET encompasses a lower area than the combined DUC wetland classes but still seems underrepresented by cameras. Wetland target may address this. 
+
+#3. Extracting data from buffers around cameras
+
+Minimum distance between clusters is 3245m and half that (to ensure no overlapping circles would be 1622.5m). 
+
+```{r}
+#Create buffers of 300m around each camera
+buffers_300<-st_buffer(cams_sf_lcc,dist=300)
+
+#Write shapefile
+st_write(buffers_300,"Processed_Data/camera_buffers_300.shp",append = FALSE)
+
+#plot
+plot(buffers_300$geometry)
+
+#Create buffers of 550m around each camera, an approximate equivalent of the survey hexagons used in survey design
+buffers_550<-st_buffer(cams_sf_lcc,dist=550)
+
+#Write shapefile
+st_write(buffers_550,"Processed_Data/camera_buffers_550.shp",append = FALSE)
+
+#Create buffers of 1622.50m around each camera, half the minimum distance between sites
+buffers_1622<-st_buffer(cams_sf_lcc,dist=1622.5)
+
+#Write shapefile
+st_write(buffers_1622,"Processed_Data/camera_buffers_1622.shp",append = FALSE)
+
+#plot
+plot(buffers_1622$geometry)
+
+#Create buffers of 1622.50m around each camera, half the minimum distance between sites
+buffers_3245<-st_buffer(cams_sf_lcc,dist=3245)
+
+#Write shapefile
+st_write(buffers_3245,"Processed_Data/camera_buffers_3245.shp",append = FALSE)
+
+#plot
+plot(buffers_3245$geometry)
+```
+
+##3.1 LCC Proportions 
+
+###3.1.1 LCC Landcover Proportions 300m
+```{r}
+landcov_fracs <- exact_extract(lcc, buffers_300, function(df) {
+    df %>%
+        group_by(value) %>%
+        summarize(total = (sum(coverage_fraction))) %>% 
+        mutate(total_area=total*(30*30)) %>% #multiply by area of one pixel 
+        mutate(total_proportion=total/sum(total))
+}, summarize_df = TRUE, append_cols = names(buffers_300), progress = T)
+
+#remove total and total_area columns
+tmp<- landcov_fracs %>% 
+  dplyr::select(-total, -total_area)
+
+  #add class names,
+landcov_fracs_join<-left_join(tmp,lcc_classes,by="value") %>% 
+  dplyr::select(-class,-value) %>% 
+  pivot_wider(values_from = total_proportion,names_from = code,names_prefix = "X300_",values_fill = 0)
+```
+
+###3.1.2 LCC Landcover Proportions 550m
+```{r}
+landcov_fracs_550 <- exact_extract(lcc, buffers_550, function(df) {
+    df %>%
+        group_by(value) %>%
+        summarize(total = (sum(coverage_fraction)))%>% 
+        mutate(total_area=total*(30*30)) %>% #multiply by area of one pixel 
+        mutate(total_proportion=total/sum(total))
+}, summarize_df = TRUE, append_cols = names(buffers_550), progress = T)
+
+#remove total and total_area columns
+tmp<- landcov_fracs_550 %>% 
+  dplyr::select(-total, -total_area)
+
+#add class names
+tmp<-left_join(tmp,lcc_classes,by="value") %>% 
+  dplyr::select(-class,-value) %>% 
+  pivot_wider(values_from = total_proportion,names_from = code,names_prefix = "X550_",values_fill = 0) #get rid of NAs
+
+#select the columns we actually want
+tmp_extract_join<-dplyr::select(tmp, "location", "X550_TSPNF", "X550_SPTNF", "X550_MF", "X550_TSPS", "X550_TSPG", "X550_SPPSLM", "X550_WET", "X550_WAT", "X550_BAR", "X550_SPPGLM", "X550_TSPBDF")
+
+#join to cov data and create new df
+landcov_fracs_join<-left_join(landcov_fracs_join,tmp_extract_join,by="location")
+```
+
+###3.1.3 LCC Landcover Proportions 1622m
+```{r}
+landcov_fracs_1622 <- exact_extract(lcc, buffers_1622, function(df) {
+    df %>%
+        group_by(value) %>%
+        summarize(total = (sum(coverage_fraction)))%>% 
+        mutate(total_area=total*(30*30)) %>% #multiply by area of one pixel 
+        mutate(total_proportion=total/sum(total))
+}, summarize_df = TRUE, append_cols = names(buffers_1622), progress = T)
+
+#remove total and total_area columns
+tmp<- landcov_fracs_1622 %>% 
+  dplyr::select(-total, -total_area)
+
+#add class names
+tmp<-left_join(tmp,lcc_classes,by="value") %>% 
+  dplyr::select(-class,-value) %>% 
+  pivot_wider(values_from = total_proportion,names_from = code,names_prefix = "X1622_",values_fill = 0) #get rid of NAs
+
+#select the columns we actually want
+tmp_extract_join<-dplyr::select(tmp, "location", "X1622_TSPNF", "X1622_SPTNF", "X1622_MF", "X1622_TSPS", "X1622_TSPG", "X1622_SPPSLM", "X1622_WET", "X1622_WAT", "X1622_BAR", "X1622_SPPGLM", "X1622_TSPBDF", "X1622_SPPBLM")
+
+#join to cov data and create new df
+landcov_fracs_join<-left_join(landcov_fracs_join,tmp_extract_join,by="location")
+```
+
+###3.1.4 LCC Landcover Proportions 3245m
+
+```{r}
+landcov_fracs_3245 <- exact_extract(lcc, buffers_3245, function(df) {
+    df %>%
+        group_by(value) %>%
+        summarize(total = (sum(coverage_fraction)))%>% 
+        mutate(total_area=total*(30*30)) %>% #multiply by area of one pixel 
+        mutate(total_proportion=total/sum(total))
+}, summarize_df = TRUE, append_cols = names(buffers_3245), progress = T)
+
+#remove total and total_area columns
+tmp<- landcov_fracs_3245 %>% 
+  dplyr::select(-total, -total_area)
+
+#add class names,
+tmp<-left_join(tmp,lcc_classes,by="value") %>% 
+  dplyr::select(-class,-value) %>% 
+  pivot_wider(values_from = total_proportion,names_from = code,names_prefix = "X3245_",values_fill = 0) #get rid of NAs
+
+#select the columns we actually want
+tmp_extract_join<-dplyr::select(tmp, "location", "X3245_TSPNF", "X3245_SPTNF", "X3245_MF", "X3245_TSPS", "X3245_TSPG", "X3245_SPPSLM", "X3245_WET", "X3245_WAT", "X3245_BAR", "X3245_SPPGLM", "X3245_TSPBDF", "X3245_SPPBLM")
+
+#join to cov data and create new df
+env_data<-left_join(landcov_fracs_join,tmp_extract_join,by="location")
+```
+
+###3.1.5 Buffer Comparisons
+
+Let's plot each landcover buffer average via a loop
+```{r}
+# List of landcover classes
+landcover_classes <- c("TSPNF", "SPTNF", "MF", "TSPS", "TSPG", "SPPSLM", "WET", "WAT", "BAR", "SPPGLM", "TSPBDF", "SPPBLM")
+
+# Create an empty list to store ggplot objects
+plots <- list()
+
+# Loop through each landcover class
+for (landcover_class in landcover_classes) {
+  # Filter data for the current landcover class
+  landcover_data <- env_data %>%
+    pivot_longer(cols = ends_with(landcover_class), names_to = c("Variable"), values_to = "Value") %>%
+    group_by(Variable) %>%
+    summarise(mean = mean(Value, na.rm = TRUE), sd = sd(Value, na.rm = TRUE))
+
+  # Define the desired order of levels
+  desired_order <- paste0("X", c("300", "550", "1622", "3245"), "_", landcover_class)
+
+  # Convert the "Variable" column to a factor with desired order
+  landcover_data$Variable <- fct_relevel(landcover_data$Variable, desired_order)
+
+  # Calculate linear regression coefficients
+  lm_coefficients <- lm(mean ~ as.numeric(Variable), data = landcover_data)$coefficients
+
+  # Create the plot with standard deviation error bars and a trend line
+  plot <- ggplot(landcover_data, aes(x = Variable, y = mean)) +
+    geom_point() +
+    geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2) +
+    geom_abline(intercept = lm_coefficients[1], slope = lm_coefficients[2], color = "blue") +
+    labs(title = paste("Mean Values Across Columns for", landcover_class, "with Standard Deviation Error Bars and Trend Line"),
+         x = "Variable",
+         y = "Mean Value")
+
+  # Add the plot to the list
+  plots[[landcover_class]] <- plot
+}
+
+# Print or display the plots
+plots
+
+```
+
+plots without average across locations 
+
+####NOTE: had to remove SPPBLM to get the GAM function to work
+```{r}
+# List of landcover classes
+landcover_classes <- c("TSPNF", "SPTNF", "MF", "TSPS", "TSPG", "SPPSLM", "WET", "WAT", "BAR", "SPPGLM", "TSPBDF")
+
+# Create an empty list to store ggplot objects
+plots <- list()
+
+# Loop through each landcover class
+for (landcover_class in landcover_classes) {
+  # Filter data for the current landcover class
+  landcover_data <- env_data %>%
+    pivot_longer(cols = ends_with(landcover_class), names_to = c("Variable"), values_to = "Value")
+
+  # Define the desired order of levels
+  desired_order <- paste0("X", c("300", "550", "1622", "3245"), "_", landcover_class)
+
+  # Convert the "Variable" column to a factor with desired order
+  landcover_data$Variable <- factor(landcover_data$Variable, levels = desired_order)
+
+  # Fit a GAM with reduced degrees of freedom
+  gam_model <- gam(Value ~ s(as.numeric(Variable), k = 3), data = landcover_data)
+
+  # Create the plot with standard deviation error bars and a GAM smooth
+  plot <- ggplot(landcover_data, aes(x = as.numeric(Variable), y = Value)) +
+    geom_point() +
+    stat_smooth(method = "gam", formula = y ~ s(x, k = 3), se = FALSE, color = "blue", linetype = "dashed") +
+    labs(title = paste("Values Across Columns for", landcover_class, "with GAM Smooth"),
+         x = "Variable",
+         y = "Value")
+
+  # Add the plot to the list
+  plots[[landcover_class]] <- plot
+}
+
+# Print or display the plots
+plots
+```
+
+
+let's try to look at the stats
+```{r}
+# Select columns that ends with "TSPNF" or are named "location"
+env_data_TSPNF <- env_data %>%
+  dplyr::select(location, ends_with("TSPNF"))
+
+# Compute differences between standardized buffer sizes
+env_data_differences <- env_data_TSPNF %>%
+  mutate(diff_300_550 = X300_TSPNF - X550_TSPNF,
+         diff_300_1622 = X300_TSPNF - X1622_TSPNF,
+         diff_300_3245 = X300_TSPNF - X3245_TSPNF,
+         diff_550_1622 = X550_TSPNF - X1622_TSPNF,
+         diff_550_3245 = X550_TSPNF - X3245_TSPNF,
+         diff_1622_3245 = X1622_TSPNF - X3245_TSPNF)
+
+head(env_data_differences)
+
+# Reshape data to long format for ANOVA
+env_data_long <- env_data_differences %>%
+  tidyr::gather(key = "comparison", value = "difference", starts_with("diff")) %>% 
+  dplyr::select(-c("X300_TSPNF", "X550_TSPNF", "X1622_TSPNF", "X3245_TSPNF"))
+
+# Perform one-way ANOVA
+anova_result <- aov(difference ~ comparison, data = env_data_long)
+print(anova_result)
+
+# Perform Tukey's post hoc test
+tukey_result <- TukeyHSD(anova_result)
+
+# Print Tukey's post hoc test results
+print(tukey_result)
+
+# Create a vector of buffer size pairs
+buffer_pairs <- c("300_550", "300_1622", "300_3245", "550_1622", "550_3245", "1622_3245")
+
+# Perform paired t-test for each pair
+t_test_results <- lapply(buffer_pairs, function(pair) {
+  t_test_result <- t.test(env_data_differences[[paste0("diff_", pair)]])
+  return(data.frame(buffer_pair = pair, p_value = t_test_result$p.value))
+})
+
+# Combine the results into a data frame
+t_test_results_df <- do.call(rbind, t_test_results)
+
+print(t_test_results_df)
+```
+ buffer_pair      p_value
+1     300_550 9.184082e-02
+2    300_1622 5.806214e-06
+3    300_3245 5.593654e-07
+4    550_1622 4.190481e-08
+5    550_3245 2.006203e-08
+6   1622_3245 1.629630e-03
+
+##3.2. DEM
+```{r}
+#load data
+DEM<-raster("Spatial/DEM/TDN_DEM.tif")
+
+#Load boundary data
+#not sure if this is the correct crs
+TDN_dem <- st_transform(TDN, crs = st_crs(DEM))
+
+dem_cropped<-crop(DEM,TDN_dem)
+plot(dem_cropped, axes = FALSE)
+plot(st_geometry(TDN_dem), add = TRUE)
+plot(st_geometry(cams_sf_lcc),add = TRUE)
+```
+
+```{r}
+#transform buffers to same crs as the DEM file
+buffers_DEM_300<-st_transform(buffers_300,crs=st_crs(DEM))
+
+dem_extract <- exact_extract(DEM, buffers_DEM_300, function(df) {
+  df %>%
+    summarize(mean_elev_300 = round(mean(coverage_fraction*value, na.rm=T), digits = 4)) #average elevation
+              #var_elev = round(var(coverage_fraction*value, na.rm=T), digits = 4), #difference in elevation
+              #sd_elev_300 = round(sd(coverage_fraction*value, na.rm=T), digits = 4)) #SD of the elevation
+}, summarize_df = TRUE, append_cols = names(buffers_DEM_300), progress = T)
+
+#select the columns we actually want
+#removed var_elev and sd_elev
+dem_extract_300<-dplyr::select(dem_extract,location,mean_elev_300)
+```
+
+```{r}
+#additional code for comparison of elevation across buffers
+#550m
+buffers_DEM_550<-st_transform(buffers_550,crs=st_crs(DEM))
+
+dem_extract <- exact_extract(DEM, buffers_DEM_550, function(df) {
+  df %>%
+    summarize(mean_elev_550 = round(mean(coverage_fraction*value, na.rm=T), digits = 4))
+}, summarize_df = TRUE, append_cols = names(buffers_DEM_550), progress = T)
+
+dem_extract_550<-dplyr::select(dem_extract,location,mean_elev_550)
+
+#1622m
+buffers_DEM_1622<-st_transform(buffers_1622,crs=st_crs(DEM))
+
+dem_extract <- exact_extract(DEM, buffers_DEM_1622, function(df) {
+  df %>%
+    summarize(mean_elev_1622 = round(mean(coverage_fraction*value, na.rm=T), digits = 4))
+}, summarize_df = TRUE, append_cols = names(buffers_DEM_1622), progress = T)
+
+dem_extract_1622<-dplyr::select(dem_extract,location,mean_elev_1622)
+
+#3245m
+buffers_DEM_3245<-st_transform(buffers_3245,crs=st_crs(DEM))
+
+dem_extract <- exact_extract(DEM, buffers_DEM_3245, function(df) {
+  df %>%
+    summarize(mean_elev_3245 = round(mean(coverage_fraction*value, na.rm=T), digits = 4))
+}, summarize_df = TRUE, append_cols = names(buffers_DEM_3245), progress = T)
+
+dem_extract_3245<-dplyr::select(dem_extract,location,mean_elev_3245)
+
+```
+
+```{r}
+#put them all together
+dem_extract_join<-dem_extract_300 %>% 
+  left_join(dem_extract_550, by = "location") %>%
+  left_join(dem_extract_1622, by = "location") %>% 
+  left_join(dem_extract_3245, by = "location")
+```
+
+plot the mean elevation in each buffer size, averaged across locations
+```{r}
+# Reshape data for plotting and calculate average mean elevation and standard deviation for each buffer size
+dem_extract_plot <- dem_extract_join %>%
+  pivot_longer(cols = starts_with("mean_elev"), names_to = "Buffer_Size", values_to = "Mean_Elevation") %>%
+  mutate(Buffer_Size = factor(Buffer_Size, levels = c("mean_elev_300", "mean_elev_550", "mean_elev_1622", "mean_elev_3245"))) %>%
+  group_by(Buffer_Size) %>%
+  summarise(Avg_Mean_Elevation = mean(Mean_Elevation),
+            SD = sd(Mean_Elevation))
+
+# Fit a linear regression model
+lm_model <- lm(Avg_Mean_Elevation ~ as.numeric(Buffer_Size), data = dem_extract_plot)
+
+# Create the plot with error bars and manually add the regression line
+ggplot(dem_extract_plot, aes(x = Buffer_Size, y = Avg_Mean_Elevation)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = Avg_Mean_Elevation - SD, ymax = Avg_Mean_Elevation + SD), width = 0.2) +
+  geom_abline(intercept = coef(lm_model)[1], slope = coef(lm_model)[2], color = "blue") +  # Add a manual linear trend line
+  labs(title = "Average Mean Elevation Across Buffer Sizes with Error Bars and Trend Line",
+       x = "Buffer Size",
+       y = "Average Mean Elevation") 
+```
+
+plot the mean elevation in each buffer size, without averaging across locations
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# List of buffer sizes
+buffer_sizes <- c("300", "550", "1622", "3245")
+
+# Select columns for all buffer sizes
+dem_extract_join_long <- dem_extract_join %>%
+  pivot_longer(cols = starts_with("mean_elev_"), names_to = "elevation_class", values_to = "mean_elevation") %>%
+  mutate(elevation_class = factor(elevation_class, levels = paste0("mean_elev_", buffer_sizes)))
+
+# Create the plot with a trend line
+plot <- ggplot(dem_extract_join_long, aes(x = elevation_class, y = mean_elevation)) +
+  geom_point() +
+  geom_abline(intercept = coef(lm(mean_elevation ~ as.numeric(elevation_class), data = dem_extract_join_long))[1], 
+              slope = coef(lm(mean_elevation ~ as.numeric(elevation_class), data = dem_extract_join_long))[2],
+              color = "blue") +
+  labs(title = "Mean Elevation Across Columns for All Buffer Sizes with Trend Line",
+       x = "Elevation Class",
+       y = "Mean Elevation")
+
+# Print or display the plot
+plot
+
+```
+
+
+```{r}
+#join to landcover data
+env_data<-left_join(env_data,dem_extract_join,by="location") 
+```
+
+
+####3.2.1 TRI
+```{r}
+#load data
+TRI<-raster("Spatial/DEM/tdn_tri")
+
+#Load boundary data
+#not sure if this is the correct crs
+TDN_tri <- st_transform(TDN, crs = st_crs(TRI))
+
+tri_cropped<-crop(TRI,TDN_tri)
+plot(tri_cropped, axes = FALSE)
+plot(st_geometry(TDN_tri), add = TRUE)
+plot(st_geometry(cams_sf_lcc),add = TRUE)
+```
+
+```{r}
+#transform buffers to same crs as the DEM file
+buffers_TRI_300<-st_transform(buffers_300,crs=st_crs(TRI))
+
+tri_extract <- exact_extract(TRI, buffers_TRI_300, function(df) {
+  df %>%
+    summarize(mean_tri_300 = round(mean(coverage_fraction*value, na.rm=T), digits = 4))#, #average tri
+              #var_tri = round(var(coverage_fraction*value, na.rm=T), digits = 4), #difference in tri
+              #sd_tri = round(sd(coverage_fraction*value, na.rm=T), digits = 4)) #SD of the tri
+}, summarize_df = TRUE, append_cols = names(buffers_TRI_300), progress = T)
+
+#select the columns we actually want
+#removed var_elev and sd_elev
+tri_extract_300<-dplyr::select(tri_extract,location,mean_tri_300)
+```
+
+```{r}
+#additional code for comparison of elevation across buffers
+#550m
+buffers_TRI_550<-st_transform(buffers_550,crs=st_crs(TRI))
+
+tri_extract <- exact_extract(TRI, buffers_TRI_550, function(df) {
+  df %>%
+    summarize(mean_tri_550 = round(mean(coverage_fraction*value, na.rm=T), digits = 4))
+}, summarize_df = TRUE, append_cols = names(buffers_TRI_550), progress = T)
+
+tri_extract_550<-dplyr::select(tri_extract,location,mean_tri_550)
+
+#1622m
+buffers_TRI_1622<-st_transform(buffers_1622,crs=st_crs(TRI))
+
+tri_extract <- exact_extract(TRI, buffers_TRI_1622, function(df) {
+  df %>%
+    summarize(mean_tri_1622 = round(mean(coverage_fraction*value, na.rm=T), digits = 4))
+}, summarize_df = TRUE, append_cols = names(buffers_TRI_1622), progress = T)
+
+tri_extract_1622<-dplyr::select(tri_extract,location,mean_tri_1622)
+
+#3245m
+buffers_TRI_3245<-st_transform(buffers_3245,crs=st_crs(TRI))
+
+tri_extract <- exact_extract(TRI, buffers_TRI_3245, function(df) {
+  df %>%
+    summarize(mean_tri_3245 = round(mean(coverage_fraction*value, na.rm=T), digits = 4))
+}, summarize_df = TRUE, append_cols = names(buffers_TRI_3245), progress = T)
+
+tri_extract_3245<-dplyr::select(tri_extract,location,mean_tri_3245)
+
+```
+
+```{r}
+#put them all together
+tri_extract_join<-tri_extract_300 %>% 
+  left_join(tri_extract_550, by = "location") %>%
+  left_join(tri_extract_1622, by = "location") %>% 
+  left_join(tri_extract_3245, by = "location")
+```
+
+plot the mean tri, averaged across locations
+```{r}
+# Reshape data for plotting and calculate average mean elevation and standard deviation for each buffer size
+tri_extract_plot <- tri_extract_join %>%
+  pivot_longer(cols = starts_with("mean_tri"), names_to = "Buffer_Size", values_to = "Mean_TRI") %>%
+  mutate(Buffer_Size = factor(Buffer_Size, levels = c("mean_tri_300", "mean_tri_550", "mean_tri_1622", "mean_tri_3245"))) %>%
+  group_by(Buffer_Size) %>%
+  summarise(Avg_Mean_TRI = mean(Mean_TRI),
+            SD = sd(Mean_TRI))
+
+# Fit a linear regression model
+lm_model <- lm(Avg_Mean_TRI ~ as.numeric(Buffer_Size), data = tri_extract_plot)
+
+# Create the plot with error bars and manually add the regression line
+ggplot(tri_extract_plot, aes(x = Buffer_Size, y = Avg_Mean_TRI)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = Avg_Mean_TRI - SD, ymax = Avg_Mean_TRI + SD), width = 0.2) +
+  geom_abline(intercept = coef(lm_model)[1], slope = coef(lm_model)[2], color = "blue") +  # Add a manual linear trend line
+  labs(title = "Average Mean TRI Across Buffer Sizes with Error Bars and Trend Line",
+       x = "Buffer Size",
+       y = "Average Mean TRI") 
+```
+
+plot the mean tri, not averaged across locations
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# List of buffer sizes
+buffer_sizes <- c("300", "550", "1622", "3245")
+
+# Select columns for all buffer sizes
+tri_extract_join_long <- tri_extract_join %>%
+  pivot_longer(cols = starts_with("mean_tri_"), names_to = "tri_class", values_to = "mean_tri") %>%
+  mutate(tri_class = factor(tri_class, levels = paste0("mean_tri_", buffer_sizes)))
+
+# Create the plot with a trend line
+plot <- ggplot(tri_extract_join_long, aes(x = tri_class, y = mean_tri)) +
+  geom_point() +
+  geom_abline(intercept = coef(lm(mean_tri ~ as.numeric(tri_class), data = tri_extract_join_long))[1], 
+              slope = coef(lm(mean_tri ~ as.numeric(tri_class), data = tri_extract_join_long))[2],
+              color = "blue") +
+  labs(title = "Mean Elevation Across Columns for All Buffer Sizes with Trend Line",
+       x = "TRI Class",
+       y = "Mean TRI")
+
+# Print or display the plot
+plot
+
+```
+
+
+```{r}
+#join to landcover data
+env_data<-left_join(env_data,tri_extract_join,by="location") 
+```
+
+
+##3.3. Canopy Cover
+```{r}
+#load data
+CC<-raster("Spatial/ForestStructure/TDN_forest_percentage_first_returns_above_mean_2015.tif")
+
+#transform buffers to same crs as the CC file
+buffers_CC<-st_transform(buffers,crs=st_crs(CC))
+
+cc_extract <- exact_extract(CC, buffers_CC, function(df) {
+  df %>%
+    summarize(mean_cc = round(mean(coverage_fraction*value, na.rm=T), digits = 4),
+              var_cc = round(var(coverage_fraction*value, na.rm=T), digits = 4),
+              sd_cc = round(sd(coverage_fraction*value, na.rm=T), digits = 4))
+}, summarize_df = TRUE, append_cols = names(buffers_CC), progress = T)
+
+#select the columns we actually want
+cc_extract_join<-dplyr::select(cc_extract,location,mean_cc,var_cc,sd_cc)
+
+#join to env data
+env_data<-left_join(env_data,cc_extract_join,by="location")
+
+```
+
+##3.4. DUC Landcover Proportions
+####NOTE: Can't get this to work correctly but not really neaded
+```{r}
+#create duc buffers
+#Create buffers of 300m around each camera
+#duc_buffers<-st_buffer(cams_sf_duc,dist=300)
+
+#Write shapefile
+#st_write(duc_buffers,"Processed_Data/duc_camera_buffers.shp",append = FALSE)
+
+#plot
+#plot(duc_buffers$geometry)
+```
+
+```{r}
+#duc_fracs <- exact_extract(duc, duc_buffers, function(df) {
+#    df %>%
+#       group_by(value) %>%
+#        summarize(total = (sum(coverage_fraction)))
+#}, summarize_df = TRUE, append_cols = names(duc_buffers), progress = T)
+
+#add class names,
+#duc_fracs_join<-left_join(duc_fracs,duc_classes,by="value") %>% 
+#  dplyr::select(-landcov,-value) %>% 
+#  pivot_wider(values_from = total,names_from = landcov,values_fill = 0) #get rid of NAs
+
+```
+
+
+##3.5. Burn-decade-by-land-cover
+
+a decadal formulation with the above age classes but also identified whether the burn was in an upland conifer forest (EOSD categories ‘conifer dense’ and ‘conifer open’), upland broadleaf forest (EOSD categories ‘broadleaf dense’, ‘broadleaf open’, ‘mixedwood open’, and ‘mixedwood dense’), non-treed upland (EOSD categories ‘bryoids’, ‘ tall shrub’, and ‘short shrub’) or lowland (EOSD categories ‘treed wetland’, ‘shrub wetland’, ‘herb wetland’, ‘herb’, and ‘sparse conifer forest’) (DeMars et al 2020)
+
+LCC Data:
+upland conifer forest - SPTNF, TSPNF
+upland broadleaf forest - MF, TSPBDF 
+non-treed upland - BAR, SPPBLM, SPPGLM, SPPSLM, TSPS, TSPG
+lowland - WET
+
+If the camera is located within a ten year old burn in a 300m buffer containing majority mixed forest, it would be Upland Broadleaf Burn 1-10 y.o.
+
+#####UPDATE: 24/10/2023 Can't get this to work properly. Does the binary 1/0 even make sense or should we be creating a new landcover shapefile for each habitat/fire age combo and taking the proportion of each. Would these habitat/fire landcovers overwrite the LCC data if they both occur in the same place? The majority of cameras below the treeline would occur within a habitat/fire landcover.  
+
+####3.5.1. Burn 1-10 y.o
+```{r}
+# Create a new column "Upland Conifer Burn 1-10 y.o." that checks the conditions
+env_data$Upland_Conifer_Burn_1_10_yo <- ifelse(
+  ((env_data$SPTNF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET","WAT")]) |
+  env_data$TSPNF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG","WAT")])) &
+  env_data$fire10 == 1), 1, 0
+)
+# Create a new column "Upland Broadleaf Burn 1-10 y.o." that checks the conditions
+env_data$Upland_Broadleaf_Burn_1_10_yo <- ifelse((env_data$MF > max(env_data[c("SPTNF", "TSPNF", "BAR", "SPPSLM", "SPPGLM", "TSPBDF", "TSPS", "TSPG", "WET","WAT")]) ||
+  env_data$TSPBDF > max(env_data[c("SPTNF", "TSPNF", "BAR", "SPPSLM", "SPPGLM", "TSPBDF", "TSPS", "TSPG", "WET","WAT")])) &
+  env_data$fire10 == 1,1,0)
+
+# Create a new column "Non-treed Burn 1-10 y.o." that checks the conditions
+env_data$Nontreed_Burn_1_10_yo <- ifelse(
+  ((env_data$BAR == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) |
+  env_data$SPPBLM == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$SPPGLM == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$SPPSLM == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$TSPS == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$TSPG == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")])) &
+  env_data$fire10 == 1), 1, 0
+)
+# Create a new column "Lowland Burn 1-10 y.o." that checks the conditions
+env_data$Lowland_Burn_1_10_yo <- ifelse(
+  ((env_data$WET == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) |
+  env_data$WAT == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")])) &
+  env_data$fire10 == 1), 1, 0
+)
+```
+
+####3.5.2. Burn 11-20 y.o
+```{r}
+# Create a new column "Upland Conifer Burn 11-20 y.o." that checks the conditions
+env_data$Upland_Conifer_Burn_11_20_yo <- ifelse(
+  ((env_data$SPTNF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET","WAT")]) |
+  env_data$TSPNF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG","WAT")])) &
+  env_data$fire20 == 1), 1, 0
+)
+# Create a new column "Upland Broadleaf Burn 11-20 y.o." that checks the conditions
+env_data$Upland_Broadleaf_Burn_11_20_yo <- ifelse(
+  ((env_data$MF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) |
+  env_data$TSPBDF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")])) &
+  env_data$fire20 == 1), 1, 0
+)
+# Create a new column "Non-treed Burn 11-20 y.o." that checks the conditions
+env_data$Nontreed_Burn_11_20_yo <- ifelse(
+  ((env_data$BAR == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) |
+  env_data$SPPBLM == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$SPPGLM == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$SPPSLM == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$TSPS == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$TSPG == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")])) &
+  env_data$fire20 == 1), 1, 0
+)
+# Create a new column "Lowland Burn 11-20 y.o." that checks the conditions
+env_data$Lowland_Burn_11_20_yo <- ifelse(
+  ((env_data$WET == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) |
+  env_data$WAT == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")])) &
+  env_data$fire20 == 1), 1, 0
+)
+```
+
+####3.5.3. Burn 21-30 y.o
+```{r}
+# Create a new column "Upland Conifer Burn 21-30 y.o." that checks the conditions
+env_data$Upland_Conifer_Burn_21_30_yo <- ifelse(
+  ((env_data$SPTNF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET","WAT")]) |
+  env_data$TSPNF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG","WAT")])) &
+  env_data$fire30 == 1), 1, 0
+)
+# Create a new column "Upland Broadleaf Burn 21-30 y.o." that checks the conditions
+env_data$Upland_Broadleaf_Burn_21_30_yo <- ifelse(
+  ((env_data$MF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) |
+  env_data$TSPBDF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")])) &
+  env_data$fire30 == 1), 1, 0
+)
+# Create a new column "Non-treed Burn 21-30 y.o." that checks the conditions
+env_data$Nontreed_Burn_21_30_yo <- ifelse(
+  ((env_data$BAR == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) |
+  env_data$SPPBLM == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$SPPGLM == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$SPPSLM == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$TSPS == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$TSPG == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")])) &
+  env_data$fire30 == 1), 1, 0
+)
+# Create a new column "Lowland Burn 21-30 y.o." that checks the conditions
+env_data$Lowland_Burn_21_30_yo <- ifelse(
+  ((env_data$WET == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) |
+  env_data$WAT == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")])) &
+  env_data$fire30 == 1), 1, 0
+)
+
+```
+
+####3.5.4. Burn 31-40 y.o
+```{r}
+# Create a new column "Upland Conifer Burn 31-40 y.o." that checks the conditions
+env_data$Upland_Conifer_Burn_31_40_yo <- ifelse(
+  ((env_data$SPTNF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET","WAT")]) |
+  env_data$TSPNF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG","WAT")])) &
+  env_data$fire40 == 1), 1, 0
+)
+# Create a new column "Upland Broadleaf Burn 31-40 y.o." that checks the conditions
+env_data$Upland_Broadleaf_Burn_31_40_yo <- ifelse(
+  ((env_data$MF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) |
+  env_data$TSPBDF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")])) &
+  env_data$fire40 == 1), 1, 0
+)
+# Create a new column "Non-treed Burn 31-40 y.o." that checks the conditions
+env_data$Nontreed_Burn_31_40_yo <- ifelse(
+  ((env_data$BAR == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) |
+  env_data$SPPBLM == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$SPPGLM == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$SPPSLM == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$TSPS == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$TSPG == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")])) &
+  env_data$fire40 == 1), 1, 0
+)
+# Create a new column "Lowland Burn 31-40 y.o." that checks the conditions
+env_data$Lowland_Burn_31_40_yo <- ifelse(
+  ((env_data$WET == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) |
+  env_data$WAT == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")])) &
+  env_data$fire40 == 1), 1, 0
+)
+
+```
+
+####3.5.5. Burn 41-60 y.o
+```{r}
+# Create a new column "Upland Conifer Burn 41-60 y.o." that checks the conditions
+env_data$Upland_Conifer_Burn_41_60_yo <- ifelse(
+  ((env_data$SPTNF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET","WAT")]) |
+  env_data$TSPNF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG","WAT")])) &
+  env_data$fire60 == 1), 1, 0
+)
+# Create a new column "Upland Broadleaf Burn 41-60 y.o." that checks the conditions
+env_data$Upland_Broadleaf_Burn_41_60_yo <- ifelse(
+  ((env_data$MF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) |
+  env_data$TSPBDF == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")])) &
+  env_data$fire60 == 1), 1, 0
+)
+# Create a new column "Non-treed Burn 41-60 y.o." that checks the conditions
+env_data$Nontreed_Burn_41_60_yo <- ifelse(
+  ((env_data$BAR == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) |
+  env_data$SPPBLM == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$SPPGLM == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$SPPSLM == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$TSPS == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) | 
+  env_data$TSPG == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")])) &
+  env_data$fire60 == 1), 1, 0
+)
+# Create a new column "Lowland Burn 41-60 y.o." that checks the conditions
+env_data$Lowland_Burn_41_60_yo <- ifelse(
+  ((env_data$WET == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")]) |
+  env_data$WAT == max(env_data[c("SPTNF", "TSPNF", "MF", "TSPBDF", "BAR", "SPPSLM", "SPPGLM", "BAR", "TSPBDF", "TSPS", "TSPG", "WET", "WAT")])) &
+  env_data$fire60 == 1), 1, 0
+)
+
+```
+
+#4. Non-buffer Covariates Ecoregions
+
+##4.1. Ecoregion
+```{r}
+#load ecoregion data
+ecoregions<-read.csv("Spatial/Boundary_NWT/EcoRegions/TDN_Stations_Ecoregions.csv")
+env_data<-left_join(env_data,ecoregions,by="location")
+```
+
+##4.2. Angle Iron
+```{r}
+#change angle iron yes/no to numeric 1/0 so it can be used in correlation analysis
+env_data$angle_iron<-ifelse(env_data$angle_iron=="yes",1,0)
+
+```
+
+##4.3. Treeline
+
+Parks Canada Melissa Beaujot melissa.beaujot@pc.gc.ca 2023 "based on imagery and an estimate based on multiple data sources"
+```{r}
+#load treeline data; binary above/below tl
+treeline<-read.csv("Spatial/Treeline/TDN_Station_Treeline.csv")
+env_data<-left_join(env_data,treeline,by="location_site")
+```
+
+##4.4. Fire
+
+Using GNWT fire data not NBAC data, seems to be more comprehensive. Used Arcmap to spatially join locations with fire data (year, area, distance to fire)
+
+###NOTE: data added from this GNWT fire db will not be used in analysis
+```{r}
+#load GNWT fire data
+fire<-read.csv("Spatial/Burn/GNWT/TDN_Station_Burn.csv")
+env_data<-left_join(env_data,fire,by="location")
+
+```
+
+##4.5. Point-level habitat
+
+###NOTE: 08/22/23, need to figure out a way to quickly extract point habitat data from the tif raster i.e. the lcc landcover type at 0m
+```{r}
+
+```
+
+##4.6. In-situ habitat
+
+Camera point-level habitat type noted by field staff
+```{r}
+
+```
+
+##4.7. Specific targets
+
+Specific columns for validated targets
+```{r}
+#summarize number of each unique target_validated
+env_data %>%
+     group_by(target_validated) %>%
+     summarise(count = n()) %>% 
+     arrange(desc(count))
+
+#env_data$bog<- ifelse(env_data$target_validated == "Bog",1,0)
+env_data$esker<- ifelse(env_data$target_validated == "Esker",1,0)
+#env_data$fen<- ifelse(env_data$target_validated == "Fen",1,0)
+#env_data$ground<- ifelse(env_data$target_validated == "Ground",1,0)
+#env_data$hilltop<- ifelse(env_data$target_validated == "Hilltop",1,0)
+#env_data$marsh<- ifelse(env_data$target_validated == "Marsh",1,0)
+env_data$natural_clearing<- ifelse(env_data$target_validated == "Natural Clearing",1,0)
+#env_data$no_ground_fov<- ifelse(env_data$target_validated == "No Ground Level FOV",1,0)
+env_data$open_tundra<- ifelse(env_data$target_validated == "Open Tundra",1,0)
+env_data$shoreline<- ifelse(env_data$target_validated == "Shoreline",1,0)
+env_data$trail<- ifelse(env_data$target_validated == "Trail",1,0)
+
+#combined wetland target
+env_data$wetland<- ifelse(env_data$target_validated %in% c("Bog", "Fen", "Marsh", "Swamp/Fen"), 1,0)
+```
+A tibble: 18 × 2
+   target_validated    count
+   <chr>               <int>
+ 1 Natural Clearing       82
+ 2 Open Tundra            63
+ 3 None                   60
+ 4 Fen                    27
+ 5 Trail                  27
+ 6 Shoreline              20
+ 7 Esker                   7
+ 8 Bog                     5
+ 9 Hilltop                 4
+10 Ground                  3
+11 0                       2
+12 Marsh                   2
+13 No Ground Level FOV     2
+14 Perch                   1
+15 Sand Bath               1
+16 Scat Pile               1
+17 Swamp/Fen               1
+18 Wallow                  1
+
+##4.8. Burn-decade-only 
+
+a decadal formulation where burns were partitioned into age classes (1–10 years old, 11–20 years old, 21–30 years old, 31–40 years old and 41–60 years old) but the type of land-cover burned was not considered (DeMars et al 2020)
+
+###4.8.1. NBAC
+```{r}
+#load data
+burn_nbac<-st_read("Spatial/Burn/NBAC/nbac_clipped.shp")
+
+#Load boundary data
+#not sure if this is the correct crs
+#TDN_nbac <- st_transform(TDN, crs = st_crs(burn_nbac))
+
+#plot(burn_nbac, axes = FALSE)
+#plot(st_geometry(TDN_nbac), add = TRUE)
+#plot(st_geometry(cams_sf_lcc),add = TRUE)
+
+```
+
+```{r}
+#transform buffers to same crs as the nbac file
+#buffers_nbac<-st_transform(buffers,crs=st_crs(burn_nbac))
+
+#To create burn variables in 10 year increments 
+burn_nbac$fire10 <- ifelse(burn_nbac$YEAR >= 2023 - 10 & burn_nbac$YEAR < 2023, 1, 0) #fires 1-10 y.o.
+burn_nbac$fire20 <- ifelse(burn_nbac$YEAR >= 2023 - 20 & burn_nbac$YEAR < 2023 - 10, 1, 0) #fires 11-20 y.o. 
+burn_nbac$fire30 <- ifelse(burn_nbac$YEAR >= 2023 - 30 & burn_nbac$YEAR < 2023 - 20, 1, 0) #fires 21-30 y.o 
+burn_nbac$fire40 <- ifelse(burn_nbac$YEAR >= 2023 - 40 & burn_nbac$YEAR < 2023 - 30, 1, 0) #fires 31-40 y.o. 
+burn_nbac$fire60 <- ifelse(burn_nbac$YEAR >= 2023 - 60 & burn_nbac$YEAR < 2023 - 40, 1, 0) #fires 41-60 y.o.
+
+#export shapefile to perform spatial join with camera data in ArcMap
+st_write(burn_nbac,"Processed_Data/burn_nbac_processed.shp",append = FALSE)
+
+#load data after ArcMap join 
+burn_decade_nbac<-read.csv("Spatial/Burn/NBAC/nbac_Output.csv")
+
+#select only the columns we want
+burn_decade_nbac<-select(burn_decade_nbac,c("location","fire10","fire20","fire30")) 
+
+# join decadal camera data to env data
+env_data<-left_join(env_data,burn_decade_nbac,by="location")
+
+#replace NAs
+env_data[is.na(env_data)]<-0
+
+# NOTE: couldn't get below code to work
+# Perform a spatial join between env_data and burned_areas_sf
+# Create a spatial object using the coordinates
+
+#env_data_sf <- st_as_sf(env_data, coords = c("longitude", "latitude"), crs = 4326)  # Use the appropriate CRS
+
+#Determine CRS of both spatial objects
+#st_crs(env_data_sf)
+#st_crs(burn_nbac)
+
+# Assuming env_data_sf has CRS 4326 and you want to convert burn_nbac to this CRS
+#burn_nbac <- st_transform(burn_nbac, crs = st_crs(env_data_sf))
+
+# Now, perform the spatial join
+#env_data_with_fire <- st_intersects(env_data_sf, burn_nbac, left = FALSE, return_na = FALSE)
+```
+
+###4.8.2. NFDB
+
+NFDB data has pre 1986 fires which aren't included in NBAC.
+```{r}
+#load data
+burn_nfdb<-st_read("Spatial/Burn/NFDB/NFDB_clipped.shp")
+
+#subset data to pre-1986 only
+burn_nfdb<-subset(burn_nfdb, YEAR<1986)
+
+#To create burn variables in 10 year increments 
+burn_nfdb$fire40 <- ifelse(burn_nfdb$YEAR >= 2023 - 40 & burn_nfdb$YEAR < 2023 - 30, 1, 0) #fires 31-40 y.o. 
+burn_nfdb$fire60 <- ifelse(burn_nfdb$YEAR >= 2023 - 60 & burn_nfdb$YEAR < 2023 - 40, 1, 0) #fires 41-60 y.o.
+
+#export shapefile to perform spatial join with camera data in ArcMap
+burn_nfdb <- st_zm(burn_nfdb, drop = TRUE) #convert 3d to 2d geometries
+st_write(burn_nfdb,"Spatial/Burn/NFDB/burn_nfdb_processed.shp",append = FALSE)
+
+#load data after ArcMap join 
+burn_decade_nfdb<-read.csv("Spatial/Burn/NFDB/nfdb_Output.csv")
+
+#select only the columns we want
+burn_decade_nfdb<-select(burn_decade_nfdb,c("location","fire40","fire60")) 
+#replace NAs
+burn_decade_nfdb[is.na(burn_decade_nfdb)]<-0
+
+# join decadal camera data to env data
+env_data<-left_join(env_data,burn_decade_nfdb,by="location")
+
+```
+
+#5. Save covariate data as csv
+
+```{r}
+#get rid of unwanted columns
+#env_data<-subset(landcov_fracs_join, select = -c(project.id,cluster,site,station,notes,hexagon,ET_Index,angle_iron_position,aru_armour,aru_damage,ECO1_NUM_1,ECO1_NAM_1,ECO2_NUM_1,ECO3_NUM_1))
+
+#tmp<-c("bog", "fen", "ground", "hilltop", "marsh", "no_ground_fov", "TSPNF", "SPTNF", "WET", "WAT", "MF", "TSPS", "TSPG", "SPPSLM", "SPPGLM", "BAR", "TSPBDF")
+
+#env_data<-env_data[, !(names(env_data) %in% tmp)]
+
+write.csv(env_data, paste0(project, "_camera_locations_and_covariates_", version, ".csv" ), row.names = F)
+```
+
+#6. Correlations between predictors
+
+So we have used a variety of different techniques to generate covariates for our subsequent analyses. However, it is important to note that we cannot just through these variables into a model.
+
+One way to check if your different variables are confound/correlated is using the corrplot package.
+
+##NOTE: Can't use fire40 because no stations fall within fires 31-40years old
+
+```{r}
+#directly read in covariate data when you just want to run the correlation analysis
+env_data<-read.csv("Processed_Data/TDN_camera_locations_and_covariates_cleaned.csv")
+
+#env_data$winter_duration <- env_data$winter_duration %>% replace(is.na(.),0)
+
+library(corrplot)
+
+# First we need to create a correlation matrix between the different variables of interest
+#M <- cor(env_data[, c("X300_TSPNF",  "X300_WET", "X300_WAT", "X300_SPTNF", "X300_MF", "X300_TSPG", "X300_TSPS", "X300_SPPSLM", "X300_SPPGLM", "X300_BAR", "X300_TSPBDF", "X550_TSPNF", "X550_WET", "X550_WAT", "X550_SPTNF", "X550_MF", "X550_TSPG", "X550_TSPS", "X550_SPPSLM", "X550_SPPGLM", "X550_BAR", "X550_TSPBDF", "X1622_TSPNF", "X1622_WET", "X1622_WAT","X1622_SPTNF", "X1622_MF", "X1622_TSPG", "X1622_TSPS", "X1622_SPPSLM", "X1622_SPPGLM", "X1622_BAR", "X1622_TSPBDF", "X1622_SPPBLM",  "X3245_TSPNF", "X3245_WET", "X3245_WAT","X3245_SPTNF", "X3245_MF", "X3245_TSPG", "X3245_TSPS", "X3245_SPPSLM", "X3245_SPPGLM", "X3245_BAR", "X3245_TSPBDF", "X3245_SPPBLM", "mean_elev_300", "mean_elev_550", "mean_elev_1622", "mean_elev_3245", "mean_tri_300", "mean_tri_550", "mean_tri_1622", "mean_tri_3245", "fire10", "fire20", "fire30", "fire60", "esker", "shoreline", "trail", "wetland")])
+
+#corrplot(M)
+```
+
+##6.1. A better corrplot
+
+pairwise correlations >0.7 exclude from model
+```{r}
+#corrplot(M,                              #The correlation matrix we made
+#         method="color",                 # How we want the cells 
+ #        type="upper",                   # Just show the upper part (it is usually mirrored)
+  #       order="hclust",                 # Order the variables using the hclust method
+   #      addCoef.col = "black",          # Add coefficient of correlation  
+    #     number.cex = .6,
+     #    tl.col="black", tl.srt=45,      # Control the text label color and rotation
+      #   diag=F                          # Suppress the diagonal correlations (which are 1 anyway)
+       #  )
+```
+
+High correlation (0.86) between mean_cc and TSPNF (Temperate or sub-polar needleleaf forest), which makes sense because it's probably the densest forest type in TDN.
+
+High correlation (0.78) between latitude and SPPSLM (Sub-polar or polar shrubland-lichen-moss), which also makes sense as it's really only found at high latitudes. Also fairly correlated with longitude (0.67).
+
+High correlation between angle iron use and longitude (0.77), as well as with SPPSLM (Sub-polar or polar shrubland-lichen-moss; 0.72). Both make sense as tundra is mainly in east and SPPSLM would have been almost exclusively in this area, with angle irons.
+
+All other covariates have low correlations.
+
+Specific validated targets all show low correlations with other covariates. Not sure how useful it would actually be moving forward. 
+
+Laura used threshold of 0.7 or -0.7
+
+Keeping fire30 because of importance
+
+```{r}
+#corrplot with correlated predictor variables removed
+#N <- cor(env_data[, c("mean_elev_300", "mean_elev_550", "mean_elev_1622", "mean_elev_3245", "mean_tri_300", "mean_tri_550", "mean_tri_1622", "mean_tri_3245", "fire10", "fire20", "fire30", "fire60", "esker", "shoreline", "trail", "wetland")])
+
+#corrplot(N)
+
+#corrplot(N,                              #The correlation matrix we made
+#         method="color",                 # How we want the cells 
+ #        type="upper",                   # Just show the upper part (it is usually mirrored)
+  #       order="hclust",                 # Order the variables using the hclust method
+   #      addCoef.col = "black",          # Add coefficient of correlation  
+    #     number.cex = .6,
+     #    tl.col="black", tl.srt=45,      # Control the text label color and rotation
+      #   diag=F                          # Suppress the diagonal correlations (which are 1 anyway)
+       #  )
+```
+
+open_tundra target shouldn't really effect detections since the image was still being triggered by the motion sensor by an animal within 30m.
+
+natural_clearing is too ambiguous of a target to include.
+
+target_binary contains too many different targets which would effect different animals different ways
+```{r}
+#corrplot with lcc300m
+#O <- cor(env_data[, c("X300_TSPNF",  "X300_WET", "X300_WAT", "X300_SPTNF", "X300_MF", "X300_TSPG", "X300_TSPS", "X300_SPPSLM", "X300_SPPGLM", "X300_BAR", "X300_TSPBDF", "mean_elev_300", "mean_tri_300", "fire10", "fire20", "fire30", "fire60", "esker", "shoreline", "trail", "wetland")])
+
+#corrplot(O)
+
+#corrplot(O,                              #The correlation matrix we made
+#         method="color",                 # How we want the cells 
+ #        type="upper",                   # Just show the upper part (it is usually mirrored)
+  #       order="hclust",                 # Order the variables using the hclust method
+   #      addCoef.col = "black",          # Add coefficient of correlation  
+    #     number.cex = .6,
+     #    tl.col="black", tl.srt=45,      # Control the text label color and rotation
+      #   diag=F                          # Suppress the diagonal correlations (which are 1 anyway)
+       #  )
+```
+
+```{r}
+#corrplot with lcc550m
+#O <- cor(env_data[, c("X550_TSPNF", "X550_WET", "X550_WAT", "X550_SPTNF", "X550_MF", "X550_TSPG", "X550_TSPS", "X550_SPPSLM", "X550_SPPGLM", "X550_BAR", "X550_TSPBDF", "mean_elev_550", "mean_tri_550", "fire10", "fire20", "fire30", "fire60", "esker", "shoreline", "trail", "wetland")])
+
+#corrplot(O)
+
+#corrplot(O,                              #The correlation matrix we made
+#         method="color",                 # How we want the cells 
+#         type="upper",                   # Just show the upper part (it is usually mirrored)
+#         order="hclust",                 # Order the variables using the hclust method
+#         addCoef.col = "black",          # Add coefficient of correlation  
+#         number.cex = .6,
+#         tl.col="black", tl.srt=45,      # Control the text label color and rotation
+#         diag=F                          # Suppress the diagonal correlations (which are 1 anyway)
+#         )
+```
+
+```{r}
+#corrplot with lcc1622m
+#O <- cor(env_data[, c("X1622_TSPNF", "X1622_WET", "X1622_WAT","X1622_SPTNF", "X1622_MF", "X1622_TSPG", "X1622_TSPS", "X1622_SPPSLM", "X1622_SPPGLM", "X1622_BAR", "X1622_TSPBDF", "X1622_SPPBLM","mean_elev_1622", "mean_tri_1622", "fire10", "fire20", "fire30", "fire60", "esker", "shoreline", "trail", "wetland")])
+
+#corrplot(O)
+
+#corrplot(O,                              #The correlation matrix we made
+#         method="color",                 # How we want the cells 
+ #        type="upper",                   # Just show the upper part (it is usually mirrored)
+  #       order="hclust",                 # Order the variables using the hclust method
+   #      addCoef.col = "black",          # Add coefficient of correlation  
+    #     number.cex = .6,
+     #    tl.col="black", tl.srt=45,      # Control the text label color and rotation
+      #   diag=F                          # Suppress the diagonal correlations (which are 1 anyway)
+       #  )
+```
+
+```{r}
+#corrplot with lcc3245m
+#O <- cor(env_data[, c("X3245_TSPNF", "X3245_WET", "X3245_WAT","X3245_SPTNF", "X3245_MF", "X3245_TSPG", "X3245_TSPS", "X3245_SPPSLM", "X3245_SPPGLM", "X3245_BAR", "X3245_TSPBDF", "X3245_SPPBLM", "mean_elev_3245", "mean_tri_3245", "fire10", "fire20", "fire30", "fire60", "esker", "shoreline", "trail", "wetland")])
+
+#corrplot(O)
+
+#corrplot(O,                              #The correlation matrix we made
+         #method="color",                 # How we want the cells 
+        # type="upper",                   # Just show the upper part (it is usually mirrored)
+        # order="hclust",                 # Order the variables using the hclust method
+        # addCoef.col = "black",          # Add coefficient of correlation  
+        # number.cex = .6,
+       #  tl.col="black", tl.srt=45,      # Control the text label color and rotation
+       #  diag=F                          # Suppress the diagonal correlations (which are 1 anyway)
+       #  )
+```
+
+##6.2. Cleaned covariate list
+```{r}
+#remove locations without cameras
+env_data_cleaned<-subset(env_data, cam_data != "FALSE")
+
+#remove covariates with high (>0.6 or <-0.6) correlations
+env_data_cleaned<-select(env_data_cleaned,-c("angle_iron","mean_ndvi","var_elev","sd_elev","mean_cc","var_cc","sd_cc","above_tl"))
+
+#remove unnecessary covariates
+env_data_cleaned<-select(env_data_cleaned,-c("target_binary", "target_validated", "ARU.name", "CAM.name", "cam_data", "aru_data", "target", "dom_habitat_duc", "dom_habitat_lcc", "ECO2_NAM_1", "ECO3_NAM_1", "below_tl", "area_ha", "fireyear", "Distance", "fire40", "natural_clearing", "open_tundra", "winter_start_date", "winter_end_date"))
+
+write.csv(env_data_cleaned, paste0(project, "_camera_locations_and_covariates_cleaned", ".csv" ), row.names = F)
+```
+
+New corrplot as of 2024-04-01
+
+```{r}
+# First we need to create a correlation matrix between the different variables of interest
+P <- cor(env_data[, c("X300_TSPNF", "X300_WET", "X300_WAT", "X300_SPTNF", "X300_MF", "X300_TSPG", "X300_TSPS", "X300_SPPSLM", "X300_SPPGLM", "X300_BAR", "X300_TSPBDF", "mean_cc", "esker_dist_m","mean_elev_300", "mean_tri_300", "treeline_distance_m", "burn_distance_m", "yrs_since_burn", "burn_size_ha")])
+
+corrplot(P)
+```
+
+pairwise correlations >0.7 exclude from model
+```{r}
+corrplot(P,                              #The correlation matrix we made
+         method="color",                 # How we want the cells 
+         type="upper",                   # Just show the upper part (it is usually mirrored)
+         order="hclust",                 # Order the variables using the hclust method
+         addCoef.col = "black",          # Add coefficient of correlation  
+         number.cex = .6,
+         tl.col="black", tl.srt=45,      # Control the text label color and rotation
+         diag=F                          # Suppress the diagonal correlations (which are 1 anyway)
+         )
+```
+
+Try running this on standardized covariate data and species data from mod_dat_wk generate in 9c_Habitat_Use_weeklyonly.rmd
+```{r}
+# First we need to create a correlation matrix between the different variables of interest
+Q <- cor(mod_dat_wk[, c("z.X300_TSPNF", "z.X300_WET", "z.X300_WAT", "z.X300_SPTNF", "z.X300_MF", "z.X300_TSPG", "z.X300_TSPS", "z.X300_SPPSLM", "z.X300_SPPGLM", "z.X300_BAR", "z.X300_TSPBDF", "z.mean_cc", "z.esker_dist_m","z.mean_elev_300", "z.mean_tri_300", "z.treeline_distance_m", "z.burn_distance_m", "z.yrs_since_burn", "z.burn_size_ha","z.composite_burn")])
+
+corrplot(Q)
+```
+
+pairwise correlations >0.7 exclude from model
+```{r}
+corrplot(Q,                              #The correlation matrix we made
+         method="color",                 # How we want the cells 
+         type="upper",                   # Just show the upper part (it is usually mirrored)
+         order="hclust",                 # Order the variables using the hclust method
+         addCoef.col = "black",          # Add coefficient of correlation  
+         number.cex = .6,
+         tl.col="black", tl.srt=45,      # Control the text label color and rotation
+         diag=F                          # Suppress the diagonal correlations (which are 1 anyway)
+         )
+```
+
+Try running with species
+```{r}
+# First we need to create a correlation matrix between the different variables of interest
+R <- cor(mod_dat_wk[, c("z.X300_TSPNF",  "z.X300_WET", "z.X300_WAT", "z.X300_SPTNF", "z.X300_MF", "z.X300_TSPG", "z.X300_TSPS", "z.X300_SPPSLM", "z.X300_SPPGLM", "z.X300_BAR", "z.X300_TSPBDF", "z.mean_cc", "z.esker_dist_m" ,"z.mean_elev_300", "z.mean_tri_300", "Caribou", "Muskox", "Moose", "Gray.Wolf", "Grizzly.Bear")])
+
+corrplot(R)
+```
+
+pairwise correlations >0.7 exclude from model
+```{r}
+corrplot(R,                              #The correlation matrix we made
+         method="color",                 # How we want the cells 
+         type="upper",                   # Just show the upper part (it is usually mirrored)
+         order="hclust",                 # Order the variables using the hclust method
+         addCoef.col = "black",          # Add coefficient of correlation  
+         number.cex = .6,
+         tl.col="black", tl.srt=45,      # Control the text label color and rotation
+         diag=F                          # Suppress the diagonal correlations (which are 1 anyway)
+         )
+```
+
+Try running with species only
+```{r}
+# First we need to create a correlation matrix between the different variables of interest
+S <- cor(mod_dat_wk[, c("Caribou", "Muskox", "Moose", "Gray.Wolf", "Grizzly.Bear")])
+
+corrplot(S)
+```
+
+pairwise correlations >0.7 exclude from model
+```{r}
+corrplot(S,                              #The correlation matrix we made
+         method="color",                 # How we want the cells 
+         type="upper",                   # Just show the upper part (it is usually mirrored)
+         order="hclust",                 # Order the variables using the hclust method
+         addCoef.col = "black",          # Add coefficient of correlation  
+         number.cex = .6,
+         tl.col="black", tl.srt=45,      # Control the text label color and rotation
+         diag=F                          # Suppress the diagonal correlations (which are 1 anyway)
+         )
+```
+
+
+Try to run Zuur protocols...
+
+In the paper "A protocol for data exploration to avoid common statistical problems" by Zuur et al. (2010), the authors recommend several steps for assessing multicollinearity in ecological datasets. These steps involve examining pairwise correlations between predictor variables, checking variance inflation factors (VIF), and inspecting eigenvalues and condition indices from a principal component analysis (PCA). Here's how you can code these steps in R for your data:
+
+Pairwise Correlation Analysis:
+Calculate pairwise correlations between numeric predictor variables. High correlations (typically above 0.7 or 0.8) may indicate multicollinearity.
+
+THIS IS THE SAME AS THE CORRPLOT FUNCTIONS ABOVE...
+```{r}
+# Assuming env_data is your dataframe
+numeric_cols <- env_data[, sapply(env_data, is.numeric)]
+correlation_matrix <- cor(numeric_cols)
+high_correlation_pairs <- which(correlation_matrix > 0.7 & correlation_matrix < 1, arr.ind = TRUE)
+```
+
+Variance Inflation Factor (VIF):
+Calculate VIF values for each predictor variable. VIF values greater than 10 indicate multicollinearity issues.
+
+```{r}
+vif_results<-multicol(numeric_cols [ ,5:19]) #don't include lat/long and such as it mucks it up
+#this gives me VIF values into the billions for all the landcovers...
+
+#try to run this on a model generated ion 9c_Habitat_Use_weeklyonly
+car::vif(glmm_wk_dag_appb)
+```
+
+Principal Component Analysis (PCA):
+Perform PCA on the predictor variables and inspect eigenvalues and condition indices. Large condition indices (>30) or small eigenvalues (<0.01) suggest multicollinearity.
+
+```{r}
+# Perform PCA
+pca_result <- princomp(numeric_cols)
+eigenvalues <- pca_result$sdev^2
+condition_indices <- sqrt(pca_result$sdev^2 / max(pca_result$sdev^2))
+
+# Create a dataframe with column names, eigenvalues, and condition indices
+results_df <- data.frame(
+  Column_Name = names(numeric_cols),
+  Eigenvalue = eigenvalues,
+  Condition_Index = condition_indices
+)
+
+# Add "Comp." prefix to the Column_Name
+results_df$Column_Name <- paste("Comp.", seq_along(results_df$Column_Name), results_df$Column_Name, sep = ".")
+
+# Apply conditional formatting
+formatted_df <- results_df %>%
+  mutate(
+    Eigenvalue = cell_spec(Eigenvalue, color = ifelse(Eigenvalue < 0.01, "red", "black")),
+    Condition_Index = cell_spec(Condition_Index, color = ifelse(Condition_Index > 30, "red", "black"))
+  )
+
+# Print the formatted dataframe
+print(formatted_df, row.names = FALSE)
+```
+
+
+You can then examine the results of these analyses to identify potential multicollinearity issues in your data. High pairwise correlations, high VIF values, and large condition indices or small eigenvalues from PCA are all indicators of multicollinearity.
+
+It's important to note that multicollinearity is not always a binary issue, and interpretation should be done cautiously. It's also advisable to consider the context of your analysis and the specific requirements of your model when determining how to address multicollinearity issues.
+
+
+
+
+
+
+
