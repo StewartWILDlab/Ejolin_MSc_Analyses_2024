@@ -533,7 +533,7 @@ for (week in unique(mod_dat_wk$week)) {
 #browseURL(gif_file)
 ```
 
-##Target analysis
+##Target Analysis
 ```{r}
 # Reorder the levels of the target_cons column
 mod_dat_wk$target_cons <- fct_relevel(mod_dat_wk$target_cons, "None")
@@ -664,6 +664,15 @@ glmm_wk_lcc_tundra <- glmer.nb(Caribou ~
 
 
 summary(glmm_wk_lcc_tundra)
+```
+
+####Treeline DIstance
+```{r}
+glmm_wk_treeline <- glmer.nb(Caribou ~ 
+                    z.treeline_distance_m + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk)
+
+
+summary(glmm_wk_treeline)
 ```
 
 
@@ -860,7 +869,7 @@ model.sel(glmm_wk_random_eff, glmm_wk_fourssn, glmm_wk_tgtonly, glmm_wk_comm_bu,
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_random, glmm_wk_random_eff, glmm_wk_snowssn, glmm_wk_fourssn, glmm_wk_wk, glmm_wk_lcc, glmm_wk_lcc_tundra, glmm_wk_dem, glmm_wk_tgt, glmm_wk_tgtonly, glmm_wk_pred, glmm_wk_ung, glmm_wk_cat2, glmm_wk_cat3, glmm_wk_comm_bu, glmm_wk_comm_td, glmm_wk_comm_app)
+model.sel(glmm_wk_random, glmm_wk_random_eff, glmm_wk_snowssn, glmm_wk_fourssn, glmm_wk_wk, glmm_wk_lcc, glmm_wk_lcc_tundra, glmm_wk_dem, glmm_wk_tgt, glmm_wk_tgtonly, glmm_wk_pred, glmm_wk_ung, glmm_wk_cat2, glmm_wk_cat3, glmm_wk_comm_bu, glmm_wk_comm_td, glmm_wk_comm_app, glmm_wk_treeline)
 ```
 
   
@@ -951,6 +960,16 @@ glmm_wk_smr_lcc_tundra <- glmer.nb(Caribou ~
 
 summary(glmm_wk_smr_lcc_tundra)
 ```
+
+###Treeline DIstance
+```{r}
+glmm_wk_smr_treeline <- glmer.nb(Caribou ~ 
+                    z.treeline_distance_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer)
+
+
+summary(glmm_wk_smr_treeline)
+```
+
 
 ## DEM
 
@@ -1134,7 +1153,7 @@ model.sel(glmm_wk_smr_null, glmm_wk_smr_other, glmm_wk_smr_comm_bu, glmm_wk_smr_
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_smr_null, glmm_wk_smr_wk, glmm_wk_smr_lcc, glmm_wk_smr_lcc_tundra, glmm_wk_smr_dem, glmm_wk_smr_other, glmm_wk_smr_pred, glmm_wk_smr_ung, glmm_wk_smr_sig, glmm_wk_smr_dag_appa, glmm_wk_smr_dag_appb, glmm_wk_smr_dag_td, glmm_wk_smr_dag_bu, glmm_wk_smr_comm_bu, glmm_wk_smr_comm_td, glmm_wk_smr_comm_app)
+model.sel(glmm_wk_smr_null, glmm_wk_smr_wk, glmm_wk_smr_lcc, glmm_wk_smr_lcc_tundra, glmm_wk_smr_dem, glmm_wk_smr_other, glmm_wk_smr_pred, glmm_wk_smr_ung, glmm_wk_smr_sig, glmm_wk_smr_dag_appa, glmm_wk_smr_dag_appb, glmm_wk_smr_dag_td, glmm_wk_smr_dag_bu, glmm_wk_smr_comm_bu, glmm_wk_smr_comm_td, glmm_wk_smr_comm_app, glmm_wk_smr_treeline)
 ```
 
 
@@ -1225,6 +1244,16 @@ glmm_wk_fall_lcc_tundra <- glmer.nb(Caribou ~
 
 summary(glmm_wk_fall_lcc_tundra)
 ```
+
+###Treeline Distance
+```{r}
+glmm_wk_fall_treeline <- glmer.nb(Caribou ~ 
+                    z.treeline_distance_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall)
+
+
+summary(glmm_wk_fall_treeline)
+```
+
 
 ## DEM
 
@@ -1412,7 +1441,7 @@ model.sel(glmm_wk_fall_null, glmm_wk_fall_tgt, glmm_wk_fll_comm_bu, glmm_wk_fll_
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_fall_null, glmm_wk_fall_wk, glmm_wk_fall_lcc, glmm_wk_fall_lcc_tundra, glmm_wk_fall_dem, glmm_wk_fall_tgt, glmm_wk_fall_pred, glmm_wk_fall_ung, glmm_wk_fall_sig, glmm_wk_fall_dag_appa, glmm_wk_fall_dag_appb, glmm_wk_fall_dag_td, glmm_wk_fall_dag_bu, glmm_wk_fll_comm_bu, glmm_wk_fll_comm_td, glmm_wk_fll_comm_app)
+model.sel(glmm_wk_fall_null, glmm_wk_fall_wk, glmm_wk_fall_lcc, glmm_wk_fall_lcc_tundra, glmm_wk_fall_dem, glmm_wk_fall_tgt, glmm_wk_fall_pred, glmm_wk_fall_ung, glmm_wk_fall_sig, glmm_wk_fall_dag_appa, glmm_wk_fall_dag_appb, glmm_wk_fall_dag_td, glmm_wk_fall_dag_bu, glmm_wk_fll_comm_bu, glmm_wk_fll_comm_td, glmm_wk_fll_comm_app, glmm_wk_fall_treeline)
 ```
 
 
@@ -1503,6 +1532,16 @@ glmm_wk_wtr_lcc_tundra <- glmer.nb(Caribou ~
 
 summary(glmm_wk_wtr_lcc_tundra)
 ```
+
+###Treeline Distance
+```{r}
+glmm_wk_wtr_treeline <- glmer.nb(Caribou ~ 
+                    z.treeline_distance_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter)
+
+
+summary(glmm_wk_wtr_treeline)
+```
+
 
 ## DEM
 
@@ -1698,7 +1737,7 @@ model.sel(glmm_wk_wtr_null, glmm_wk_wtr_other, glmm_wk_wtr_comm_bu, glmm_wk_wtr_
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_wtr_null, glmm_wk_wtr_wk, glmm_wk_wtr_lcc, glmm_wk_wtr_lcc_tundra, glmm_wk_wtr_dem, glmm_wk_wtr_other, glmm_wk_wtr_pred, glmm_wk_wtr_ung, glmm_wk_wtr_sig, glmm_wk_wtr_sig2, glmm_wk_wtr_dag_appa, glmm_wk_wtr_dag_appb, glmm_wk_wtr_dag_td, glmm_wk_wtr_dag_bu, glmm_wk_wtr_comm_bu, glmm_wk_wtr_comm_td, glmm_wk_wtr_comm_app)
+model.sel(glmm_wk_wtr_null, glmm_wk_wtr_wk, glmm_wk_wtr_lcc, glmm_wk_wtr_lcc_tundra, glmm_wk_wtr_dem, glmm_wk_wtr_other, glmm_wk_wtr_pred, glmm_wk_wtr_ung, glmm_wk_wtr_sig, glmm_wk_wtr_sig2, glmm_wk_wtr_dag_appa, glmm_wk_wtr_dag_appb, glmm_wk_wtr_dag_td, glmm_wk_wtr_dag_bu, glmm_wk_wtr_comm_bu, glmm_wk_wtr_comm_td, glmm_wk_wtr_comm_app, glmm_wk_wtr_treeline)
 ```
 
 ############################################################################################################################################################################################################################
@@ -1787,6 +1826,15 @@ glmm_wk_spri_lcc_tundra <- glmer.nb(Caribou ~
                     z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri)
 
 summary(glmm_wk_fall_lcc_tundra)
+```
+
+###Treeline Distance
+```{r}
+glmm_wk_spri_treeline <- glmer.nb(Caribou ~ 
+                    z.treeline_distance_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri)
+
+
+summary(glmm_wk_spri_treeline)
 ```
 
 ## DEM
@@ -1984,7 +2032,7 @@ model.sel(glmm_wk_spri_null, glmm_wk_spri_tgt, glmm_wk_spr_comm_bu, glmm_wk_spr_
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_spri_null, glmm_wk_spri_wk, glmm_wk_spri_lcc, glmm_wk_spri_lcc_tundra, glmm_wk_spri_dem, glmm_wk_spri_tgt, glmm_wk_spri_pred, glmm_wk_spri_ung, glmm_wk_spri_sig, glmm_wk_spri_sig2, glmm_wk_spri_dag_appa, glmm_wk_spri_dag_appb, glmm_wk_spri_dag_td, glmm_wk_spri_dag_bu, glmm_wk_spr_comm_bu, glmm_wk_spr_comm_td, glmm_wk_spr_comm_app)
+model.sel(glmm_wk_spri_null, glmm_wk_spri_wk, glmm_wk_spri_lcc, glmm_wk_spri_lcc_tundra, glmm_wk_spri_dem, glmm_wk_spri_tgt, glmm_wk_spri_pred, glmm_wk_spri_ung, glmm_wk_spri_sig, glmm_wk_spri_sig2, glmm_wk_spri_dag_appa, glmm_wk_spri_dag_appb, glmm_wk_spri_dag_td, glmm_wk_spri_dag_bu, glmm_wk_spr_comm_bu, glmm_wk_spr_comm_td, glmm_wk_spr_comm_app, glmm_wk_spri_treeline)
 ```
 
 
@@ -2168,6 +2216,15 @@ glmm_wk_cbou_lcc_tundra <- glmer.nb(Caribou ~
 summary(glmm_wk_cbou_lcc_tundra)
 ```
 
+####Treeline Distance
+```{r}
+glmm_wk_cbou_treeline <- glmer.nb(Caribou ~ 
+                    z.treeline_distance_m + four_season + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou)
+
+
+summary(glmm_wk_cbou_treeline)
+```
+
 ### DEM
 
 Let's just look at our DEM covariates
@@ -2328,7 +2385,7 @@ model.sel(glmm_wk_cbou_random_eff, glmm_wk_cbou_fourssn, glmm_wk_cbou_tgtonly, g
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_random, glmm_wk_cbou_random_eff, glmm_wk_cbou_snowssn, glmm_wk_cbou_fourssn, glmm_wk_cbou_wk, glmm_wk_cbou_lcc, glmm_wk_cbou_lcc_tundra, glmm_wk_cbou_dem, glmm_wk_cbou_tgt, glmm_wk_cbou_tgtonly, glmm_wk_cbou_pred, glmm_wk_cbou_ung, glmm_wk_cbou_cat2, glmm_wk_cbou_cat3, glmm_wk_cbou_comm_bu, glmm_wk_cbou_comm_td, glmm_wk_cbou_comm_app)
+model.sel(glmm_wk_cbou_random, glmm_wk_cbou_random_eff, glmm_wk_cbou_snowssn, glmm_wk_cbou_fourssn, glmm_wk_cbou_wk, glmm_wk_cbou_lcc, glmm_wk_cbou_lcc_tundra, glmm_wk_cbou_dem, glmm_wk_cbou_tgt, glmm_wk_cbou_tgtonly, glmm_wk_cbou_pred, glmm_wk_cbou_ung, glmm_wk_cbou_cat2, glmm_wk_cbou_cat3, glmm_wk_cbou_comm_bu, glmm_wk_cbou_comm_td, glmm_wk_cbou_comm_app, glmm_wk_cbou_treeline)
 ```
 
 
@@ -2391,6 +2448,15 @@ glmm_wk_cbou_smr_lcc_tundra <- glmer.nb(Caribou ~
                     z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer)
 
 summary(glmm_wk_cbou_smr_lcc_tundra)
+```
+
+###Treeline Distance
+```{r}
+glmm_wk_cbou_smr_treeline <- glmer.nb(Caribou ~ 
+                    z.treeline_distance_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer)
+
+
+summary(glmm_wk_cbou_smr_treeline)
 ```
 
 ## DEM
@@ -2540,7 +2606,7 @@ model.sel(glmm_wk_cbou_smr_null, glmm_wk_cbou_smr_other, glmm_wk_cbou_smr_comm_b
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_smr_null, glmm_wk_cbou_smr_wk, glmm_wk_cbou_smr_lcc_tundra, glmm_wk_cbou_smr_dem, glmm_wk_cbou_smr_other, glmm_wk_cbou_smr_pred, glmm_wk_cbou_smr_ung, glmm_wk_cbou_smr_sig, glmm_wk_cbou_smr_dag_td, glmm_wk_cbou_smr_dag_bu, glmm_wk_cbou_smr_dag_appa, glmm_wk_cbou_smr_dag_appb, glmm_wk_cbou_smr_comm_bu, glmm_wk_cbou_smr_comm_td, glmm_wk_cbou_smr_comm_app)
+model.sel(glmm_wk_cbou_smr_null, glmm_wk_cbou_smr_wk, glmm_wk_cbou_smr_lcc_tundra, glmm_wk_cbou_smr_dem, glmm_wk_cbou_smr_other, glmm_wk_cbou_smr_pred, glmm_wk_cbou_smr_ung, glmm_wk_cbou_smr_sig, glmm_wk_cbou_smr_dag_td, glmm_wk_cbou_smr_dag_bu, glmm_wk_cbou_smr_dag_appa, glmm_wk_cbou_smr_dag_appb, glmm_wk_cbou_smr_comm_bu, glmm_wk_cbou_smr_comm_td, glmm_wk_cbou_smr_comm_app, glmm_wk_cbou_smr_treeline)
 ```
 
 ############################################################################################################################################################################################################################
@@ -2603,6 +2669,15 @@ glmm_wk_cbou_fall_lcc_tundra <- glmer.nb(Caribou ~
                     z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall)
 
 summary(glmm_wk_cbou_fall_lcc_tundra)
+```
+
+###Treeline Distance
+```{r}
+glmm_wk_cbou_fall_treeline <- glmer.nb(Caribou ~ 
+                    z.treeline_distance_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall)
+
+
+summary(glmm_wk_cbou_fall_treeline)
 ```
 
 ## DEM
@@ -2713,7 +2788,7 @@ model.sel(glmm_wk_cbou_fall_null, glmm_wk_cbou_fall_tgt, glmm_wk_cbou_fll_comm_b
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_fall_null, glmm_wk_cbou_fall_wk, glmm_wk_cbou_fall_lcc, glmm_wk_cbou_fall_lcc_tundra, glmm_wk_cbou_fall_dem, glmm_wk_cbou_fall_tgt, glmm_wk_cbou_fall_pred, glmm_wk_cbou_fall_ung, glmm_wk_cbou_fall_sig, glmm_wk_cbou_fll_comm_bu, glmm_wk_cbou_fll_comm_td, glmm_wk_cbou_fll_comm_app)
+model.sel(glmm_wk_cbou_fall_null, glmm_wk_cbou_fall_wk, glmm_wk_cbou_fall_lcc, glmm_wk_cbou_fall_lcc_tundra, glmm_wk_cbou_fall_dem, glmm_wk_cbou_fall_tgt, glmm_wk_cbou_fall_pred, glmm_wk_cbou_fall_ung, glmm_wk_cbou_fall_sig, glmm_wk_cbou_fll_comm_bu, glmm_wk_cbou_fll_comm_td, glmm_wk_cbou_fll_comm_app, glmm_wk_cbou_fall_treeline)
 ```
 
 
@@ -2777,6 +2852,15 @@ glmm_wk_cbou_wtr_lcc_tundra <- glmer.nb(Caribou ~
                     z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter)
 
 summary(glmm_wk_cbou_wtr_lcc_tundra)
+```
+
+###Treeline Distance
+```{r}
+glmm_wk_cbou_wtr_treeline <- glmer.nb(Caribou ~ 
+                    z.treeline_distance_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter)
+
+
+summary(glmm_wk_cbou_wtr_treeline)
 ```
 
 ## DEM
@@ -2897,7 +2981,7 @@ model.sel(glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_other, glmm_wk_cbou_wtr_comm_b
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_wk, glmm_wk_cbou_wtr_lcc, glmm_wk_cbou_wtr_lcc_tundra, glmm_wk_cbou_wtr_dem, glmm_wk_cbou_wtr_other, glmm_wk_cbou_wtr_pred, glmm_wk_cbou_wtr_ung, glmm_wk_cbou_wtr_sig, glmm_wk_cbou_wtr_sig2, glmm_wk_cbou_wtr_comm_bu, glmm_wk_cbou_wtr_comm_td, glmm_wk_cbou_wtr_comm_app)
+model.sel(glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_wk, glmm_wk_cbou_wtr_lcc, glmm_wk_cbou_wtr_lcc_tundra, glmm_wk_cbou_wtr_dem, glmm_wk_cbou_wtr_other, glmm_wk_cbou_wtr_pred, glmm_wk_cbou_wtr_ung, glmm_wk_cbou_wtr_sig, glmm_wk_cbou_wtr_sig2, glmm_wk_cbou_wtr_comm_bu, glmm_wk_cbou_wtr_comm_td, glmm_wk_cbou_wtr_comm_app, glmm_wk_cbou_wtr_treeline)
 ```
 
 
@@ -2961,6 +3045,15 @@ glmm_wk_cbou_spri_lcc_tundra <- glmer.nb(Caribou ~
                     z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri)
 
 summary(glmm_wk_cbou_fall_lcc_tundra)
+```
+
+###Treeline Distance
+```{r}
+glmm_wk_cbou_spri_treeline <- glmer.nb(Caribou ~ 
+                    z.treeline_distance_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri)
+
+
+summary(glmm_wk_cbou_spri_treeline)
 ```
 
 ## DEM
@@ -3085,7 +3178,7 @@ model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spri_tgt, glmm_wk_cbou_spr_comm_b
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spri_wk, glmm_wk_cbou_spri_lcc, glmm_wk_cbou_spri_lcc_tundra, glmm_wk_cbou_spri_dem, glmm_wk_cbou_spri_tgt, glmm_wk_cbou_spri_pred, glmm_wk_cbou_spri_ung, glmm_wk_cbou_spri_sig, glmm_wk_cbou_spri_sig2, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_app)
+model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spri_wk, glmm_wk_cbou_spri_lcc, glmm_wk_cbou_spri_lcc_tundra, glmm_wk_cbou_spri_dem, glmm_wk_cbou_spri_tgt, glmm_wk_cbou_spri_pred, glmm_wk_cbou_spri_ung, glmm_wk_cbou_spri_sig, glmm_wk_cbou_spri_sig2, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_app, glmm_wk_cbou_spri_treeline)
 ```
 
 #NOTE: 2024-02-25 ###########################################################################
