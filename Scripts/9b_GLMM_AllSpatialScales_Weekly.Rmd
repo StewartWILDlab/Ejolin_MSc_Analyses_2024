@@ -2579,6 +2579,15 @@ glmm_wk_cbou_smr_comm_bu <- glmer.nb(Caribou ~
 summary(glmm_wk_cbou_smr_comm_bu)
 ```
 
+try new fn
+```{r}
+glmm_wk_cbou_smr_comm_bu_2 <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_comm_bu_2)
+```
+this works much much better...
+
 #### Top Down
 
 ```{r}
