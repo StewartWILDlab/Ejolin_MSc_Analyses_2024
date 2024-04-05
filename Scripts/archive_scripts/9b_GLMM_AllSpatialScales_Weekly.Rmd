@@ -601,7 +601,6 @@ aic <- AIC(model1, model2, model3, model4, model5, model6, model7, model8)
 bic <- BIC(model1, model2, model3, model4, model5, model6, model7, model8)
 ```
 
-
 ###Simple Models
 let's run a couple super simple models, one with a random effect and one with the survey effort offset and no extra covariates:
 ```{r}

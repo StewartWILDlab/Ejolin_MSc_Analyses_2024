@@ -8,3 +8,13 @@ date: "2024-04-05"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# Load the required packages
+
+```{r}
+# Check you have them and load them
+list.of.packages <- c("kableExtra", "tidyr", "ggplot2", "gridExtra", "dplyr", "Hmsc", "jtools", "lubridate", "corrplot", "MuMIn","stringr","sf","raster","leaflet", "tidyverse","htmlwidgets","webshot", "purrr", "magick","forcats","multcomp", "reshape2", "lme4", "tidyr", "TMB", "glmmTMB")
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+lapply(list.of.packages, require, character.only = TRUE)
+```
