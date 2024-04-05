@@ -1,0 +1,10 @@
+---
+title: "GLMM_AllSpatialScales_Weekly_Cleaned"
+output: html_document
+date: "2024-04-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
