@@ -1127,7 +1127,7 @@ print(tukey_results)
 
 # Local, Spring, WEEKLY detection data
 ```{r}
-# Create a new data frame for winter
+# Create a new data frame for spring
 mod_dat_wk_cbou_spri <- mod_dat_wk_cbou[mod_dat_wk_cbou$four_season == "Spring", ]
 ```
 
