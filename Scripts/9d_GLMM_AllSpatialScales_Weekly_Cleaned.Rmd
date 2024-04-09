@@ -23,6 +23,16 @@ lapply(list.of.packages, require, character.only = TRUE)
 ```{r}
 # Import the weekly regional multiseason dataset created in 9c_GLMM_Create_Datasets
 mod_dat_wk <- read.csv("Processed_Data/glmm_wk_region_multi.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk$target_cons <- fct_relevel(mod_dat_wk$target_cons, "None")
+mod_dat_wk$target_hydro <- fct_relevel(mod_dat_wk$target_hydro, "None")
+mod_dat_wk$target_linear <- fct_relevel(mod_dat_wk$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk$target_cons)
+levels(mod_dat_wk$target_hydro)
+levels(mod_dat_wk$target_linear)
 ```
 
 ##Simple Models
@@ -236,6 +246,16 @@ model.sel(glmm_wk_random_eff, glmm_wk_snowssn, glmm_wk_fourssn, glmm_wk_wk, glmm
 ```{r}
 # Import the weekly regional summer dataset created in 9c_GLMM_Create_Datasets
 mod_dat_wk_summer <- read.csv("Processed_Data/glmm_wk_region_smr.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_summer$target_cons <- fct_relevel(mod_dat_wk_summer$target_cons, "None")
+mod_dat_wk_summer$target_hydro <- fct_relevel(mod_dat_wk_summer$target_hydro, "None")
+mod_dat_wk_summer$target_linear <- fct_relevel(mod_dat_wk_summer$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_summer$target_cons)
+levels(mod_dat_wk_summer$target_hydro)
+levels(mod_dat_wk_summer$target_linear)
 ```
 
 ##Simple Models
@@ -450,9 +470,18 @@ model.sel(glmm_wk_smr_null, glmm_wk_smr_tgt_h, glmm_wk_smr_tgt_l, glmm_wk_smr_co
 
 #############################################################################################
 
+##THE ULTIMATE MODEL
+```{r}
+#glmm_wk_smr_sig_3 <- glmmTMB(Caribou ~ 
+#                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WAT  + z.X300_BAR + z.esker_dist_m + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+#summary(glmm_wk_smr_sig_3)
+```
+
+
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_smr_null, glmm_wk_smr_wk, glmm_wk_smr_lcc, glmm_wk_smr_lcc_tundra, glmm_wk_smr_dem, glmm_wk_smr_tgt_h, glmm_wk_smr_tgt_l, glmm_wk_smr_tgt, glmm_wk_smr_pred, glmm_wk_smr_ung, glmm_wk_smr_dag_appa, glmm_wk_smr_dag_appb, glmm_wk_smr_dag_td, glmm_wk_smr_dag_bu, glmm_wk_smr_comm_bu, glmm_wk_smr_comm_td, glmm_wk_smr_comm_app, glmm_wk_smr_treeline, glmm_wk_smr_esker)
+model.sel(glmm_wk_smr_null, glmm_wk_smr_wk, glmm_wk_smr_lcc, glmm_wk_smr_lcc_tundra, glmm_wk_smr_dem, glmm_wk_smr_tgt_h, glmm_wk_smr_tgt_l, glmm_wk_smr_tgt, glmm_wk_smr_pred, glmm_wk_smr_ung, glmm_wk_smr_dag_appa, glmm_wk_smr_dag_appb, glmm_wk_smr_dag_td, glmm_wk_smr_dag_bu, glmm_wk_smr_comm_bu, glmm_wk_smr_comm_td, glmm_wk_smr_comm_app, glmm_wk_smr_esker)
 ```
 
 ############################################################################################################################################################################################################################
@@ -461,6 +490,16 @@ model.sel(glmm_wk_smr_null, glmm_wk_smr_wk, glmm_wk_smr_lcc, glmm_wk_smr_lcc_tun
 ```{r}
 # Create a new data frame for winter
 mod_dat_wk_fall <- read.csv("Processed_Data/glmm_wk_region_fall.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_fall$target_cons <- fct_relevel(mod_dat_wk_fall$target_cons, "None")
+mod_dat_wk_fall$target_hydro <- fct_relevel(mod_dat_wk_fall$target_hydro, "None")
+mod_dat_wk_fall$target_linear <- fct_relevel(mod_dat_wk_fall$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_fall$target_cons)
+levels(mod_dat_wk_fall$target_hydro)
+levels(mod_dat_wk_fall$target_linear)
 ```
 
 ##Simple Models
@@ -680,6 +719,16 @@ model.sel(glmm_wk_fall_null, glmm_wk_fall_wk, glmm_wk_fall_lcc, glmm_wk_fall_lcc
 ```{r}
 # Create a new data frame for winter
 mod_dat_wk_winter <- read.csv("Processed_Data/glmm_wk_region_wtr.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_winter$target_cons <- fct_relevel(mod_dat_wk_winter$target_cons, "None")
+mod_dat_wk_winter$target_hydro <- fct_relevel(mod_dat_wk_winter$target_hydro, "None")
+mod_dat_wk_winter$target_linear <- fct_relevel(mod_dat_wk_winter$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_winter$target_cons)
+levels(mod_dat_wk_winter$target_hydro)
+levels(mod_dat_wk_winter$target_linear)
 ```
 
 ##Simple Models
@@ -900,6 +949,16 @@ model.sel(glmm_wk_wtr_null, glmm_wk_wtr_wk, glmm_wk_wtr_lcc, glmm_wk_wtr_lcc_tun
 ```{r}
 # Create a new data frame for winter
 mod_dat_wk_spri <- read.csv("Processed_Data/glmm_wk_region_spr.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_spri$target_cons <- fct_relevel(mod_dat_wk_spri$target_cons, "None")
+mod_dat_wk_spri$target_hydro <- fct_relevel(mod_dat_wk_spri$target_hydro, "None")
+mod_dat_wk_spri$target_linear <- fct_relevel(mod_dat_wk_spri$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_spri$target_cons)
+levels(mod_dat_wk_spri$target_hydro)
+levels(mod_dat_wk_spri$target_linear)
 ```
 
 ##Simple Models
@@ -1118,6 +1177,16 @@ model.sel(glmm_wk_spri_null, glmm_wk_spri_wk, glmm_wk_spri_lcc, glmm_wk_spri_lcc
 # Local, Multiseason, WEEK
 ```{r}
 mod_dat_wk_cbou <- read.csv("Processed_Data/glmm_wk_local_multi.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_cbou$target_cons <- fct_relevel(mod_dat_wk_cbou$target_cons, "None")
+mod_dat_wk_cbou$target_hydro <- fct_relevel(mod_dat_wk_cbou$target_hydro, "None")
+mod_dat_wk_cbou$target_linear <- fct_relevel(mod_dat_wk_cbou$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_cbou$target_cons)
+levels(mod_dat_wk_cbou$target_hydro)
+levels(mod_dat_wk_cbou$target_linear)
 ```
 
 ##Simple Models
@@ -1304,6 +1373,16 @@ model.sel(glmm_wk_cbou_null, glmm_wk_cbou_snowssn, glmm_wk_cbou_fourssn, glmm_wk
 ```{r}
 # Create a new data frame for summer
 mod_dat_wk_cbou_summer <- read.csv("Processed_Data/glmm_wk_local_smr.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_cbou_summer$target_cons <- fct_relevel(mod_dat_wk_cbou_summer$target_cons, "None")
+mod_dat_wk_cbou_summer$target_hydro <- fct_relevel(mod_dat_wk_cbou_summer$target_hydro, "None")
+mod_dat_wk_cbou_summer$target_linear <- fct_relevel(mod_dat_wk_cbou_summer$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_cbou_summer$target_cons)
+levels(mod_dat_wk_cbou_summer$target_hydro)
+levels(mod_dat_wk_cbou_summer$target_linear)
 ```
 
 ##Simple Models
@@ -1517,6 +1596,16 @@ model.sel(glmm_wk_cbou_smr_null, glmm_wk_cbou_smr_wk, glmm_wk_cbou_smr_lcc_tundr
 ```{r}
 # Create a new data frame for winter
 mod_dat_wk_cbou_fall <- read.csv("Processed_Data/glmm_wk_local_fall.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_cbou_fall$target_cons <- fct_relevel(mod_dat_wk_cbou_fall$target_cons, "None")
+mod_dat_wk_cbou_fall$target_hydro <- fct_relevel(mod_dat_wk_cbou_fall$target_hydro, "None")
+mod_dat_wk_cbou_fall$target_linear <- fct_relevel(mod_dat_wk_cbou_fall$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_cbou_fall$target_cons)
+levels(mod_dat_wk_cbou_fall$target_hydro)
+levels(mod_dat_wk_cbou_fall$target_linear)
 ```
 
 ##Simple Models
@@ -1691,6 +1780,16 @@ model.sel(glmm_wk_cbou_fall_null, glmm_wk_cbou_fall_wk, glmm_wk_cbou_fall_lcc, g
 ```{r}
 # Create a new data frame for winter
 mod_dat_wk_cbou_winter <- read.csv("Processed_Data/glmm_wk_local_wtr.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_cbou_winter$target_cons <- fct_relevel(mod_dat_wk_cbou_winter$target_cons, "None")
+mod_dat_wk_cbou_winter$target_hydro <- fct_relevel(mod_dat_wk_cbou_winter$target_hydro, "None")
+mod_dat_wk_cbou_winter$target_linear <- fct_relevel(mod_dat_wk_cbou_winter$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_cbou_winter$target_cons)
+levels(mod_dat_wk_cbou_winter$target_hydro)
+levels(mod_dat_wk_cbou_winter$target_linear)
 ```
 
 ##Simple Models
@@ -1868,6 +1967,16 @@ model.sel(glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_wk, glmm_wk_cbou_wtr_lcc, glmm
 ```{r}
 # Create a new data frame for winter
 mod_dat_wk_cbou_spri <- read.csv("Processed_Data/glmm_wk_local_spr.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_cbou_spri$target_cons <- fct_relevel(mod_dat_wk_cbou_spri$target_cons, "None")
+mod_dat_wk_cbou_spri$target_hydro <- fct_relevel(mod_dat_wk_cbou_spri$target_hydro, "None")
+mod_dat_wk_cbou_spri$target_linear <- fct_relevel(mod_dat_wk_cbou_spri$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_cbou_spri$target_cons)
+levels(mod_dat_wk_cbou_spri$target_hydro)
+levels(mod_dat_wk_cbou_spri$target_linear)
 ```
 
 ##Simple Models
@@ -1934,17 +2043,13 @@ glmm_wk_cbou_spri_tgt <- glmmTMB(Caribou ~
 
 
 summary(glmm_wk_cbou_spri_tgt)
-```
 
-```{r}
 glmm_wk_cbou_spri_tgt_h <- glmmTMB(Caribou ~ 
                      target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
 summary(glmm_wk_cbou_spri_tgt_h)
-```
 
-```{r}
 glmm_wk_cbou_spri_tgt_l <- glmmTMB(Caribou ~ 
                      target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 

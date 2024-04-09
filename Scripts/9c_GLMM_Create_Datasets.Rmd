@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 # Check you have them and load them
-list.of.packages <- c("kableExtra", "tidyr", "ggplot2", "gridExtra", "dplyr", "Hmsc", "jtools", "lubridate", "corrplot", "MuMIn","stringr","sf","raster","leaflet", "tidyverse","htmlwidgets","webshot", "purrr", "magick","forcats","multcomp", "reshape2", "lme4", "tidyr")
+list.of.packages <- c("kableExtra", "tidyr", "ggplot2", "gridExtra", "dplyr", "Hmsc", "jtools", "lubridate", "corrplot", "MuMIn","stringr","sf","raster","leaflet", "tidyverse","htmlwidgets","webshot", "purrr", "magick","forcats","multcomp", "reshape2", "lme4", "tidyr", "stats")
 
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages)
@@ -500,6 +500,12 @@ print(tukey_results)
 perform the same tests on the new target_hydro (wetland shoreline) and target_linear (trail esker) categories. These targets have been separated because their predicted to have similar effects on caribou occurrences. 
 
 ```{r}
+# Reorder the levels of the target_hydro column
+mod_dat_wk$target_hydro <- fct_relevel(mod_dat_wk$target_hydro, "None")
+
+#check the levels were reordered correctly. None should be first to act as the control feature. 
+levels(mod_dat_wk$target_hydro)
+
 #run anova on hydro targets
 region_wk_hydro_aov <- aov(Caribou ~ target_hydro, data=mod_dat_wk)
 summary(region_wk_hydro_aov)
@@ -512,6 +518,12 @@ print(tukey_results)
 ```
 
 ```{r}
+# Reorder the levels of the target_linear column
+mod_dat_wk$target_linear <- fct_relevel(mod_dat_wk$target_linear, "None")
+
+#check the levels were reordered correctly. None should be first to act as the control feature. 
+levels(mod_dat_wk$target_linear)
+
 #run anova on linear targets
 region_wk_linear_aov <- aov(Caribou ~ target_linear, data=mod_dat_wk)
 summary(region_wk_linear_aov)
@@ -522,6 +534,7 @@ tukey_results <- TukeyHSD(region_wk_linear_aov)
 # View the results
 print(tukey_results)
 ```
+
 
 ############################################################################################################################################################################################################################
   
