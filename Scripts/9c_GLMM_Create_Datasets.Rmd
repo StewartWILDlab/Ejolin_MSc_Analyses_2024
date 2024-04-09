@@ -516,6 +516,7 @@ tukey_results <- TukeyHSD(region_wk_hydro_aov)
 # View the results
 print(tukey_results)
 ```
+Not significant.
 
 ```{r}
 # Reorder the levels of the target_linear column
@@ -534,7 +535,13 @@ tukey_results <- TukeyHSD(region_wk_linear_aov)
 # View the results
 print(tukey_results)
 ```
+                 Df Sum Sq Mean Sq F value   Pr(>F)    
+target_linear     2     45  22.351   16.79 5.23e-08 ***
 
+$target_linear
+                  diff        lwr         upr     p adj
+Esker-None   0.3412555  0.1175085  0.56500256 0.0010243
+Trail-None  -0.1534721 -0.2346369 -0.07230728 0.0000280
 
 ############################################################################################################################################################################################################################
   
@@ -595,6 +602,11 @@ tukey_results <- TukeyHSD(region_wk_smr_hydro_aov)
 # View the results
 print(tukey_results)
 ```
+                Df Sum Sq Mean Sq F value  Pr(>F)   
+target_hydro    2      9   4.376   6.301 0.00185 **
+
+                         diff         lwr         upr     p adj
+Shoreline-None     0.14233231  0.02655834  0.25810628 0.0110639
 
 ```{r}
 #run anova on linear targets
@@ -607,6 +619,7 @@ tukey_results <- TukeyHSD(region_wk_smr_linear_aov)
 # View the results
 print(tukey_results)
 ```
+Not significant
 
 ############################################################################################################################################################################################################################
 
@@ -667,6 +680,7 @@ tukey_results <- TukeyHSD(region_wk_fll_hydro_aov)
 # View the results
 print(tukey_results)
 ```
+Not significant 
 
 ```{r}
 #run anova on linear targets
@@ -679,6 +693,12 @@ tukey_results <- TukeyHSD(region_wk_fll_linear_aov)
 # View the results
 print(tukey_results)
 ```
+                Df Sum Sq Mean Sq F value   Pr(>F)    
+target_linear    2    122   60.97   10.51 2.87e-05 ***
+              
+               diff         lwr         upr     p adj
+Trail-None  -0.7381761 -1.1721914 -0.3041608 0.0002027
+
 
 ################################################################################################################################################################################################################################################
 
@@ -739,6 +759,7 @@ tukey_results <- TukeyHSD(region_wk_wtr_hydro_aov)
 # View the results
 print(tukey_results)
 ```
+Not significant
 
 ```{r}
 #run anova on linear targets
@@ -751,6 +772,12 @@ tukey_results <- TukeyHSD(region_wk_wtr_linear_aov)
 # View the results
 print(tukey_results)
 ```
+                Df Sum Sq Mean Sq F value   Pr(>F)    
+target_linear    2    8.9   4.470   23.12 1.08e-10 ***
+
+                   diff        lwr         upr     p adj
+Esker-None   0.45396375  0.2897541  0.61817339 0.0000000
+
 
 ############################################################################################################################################################################################################################
 
@@ -811,6 +838,7 @@ tukey_results <- TukeyHSD(region_wk_spr_hydro_aov)
 # View the results
 print(tukey_results)
 ```
+Not Significant 
 
 ```{r}
 #run anova on linear targets
@@ -823,6 +851,7 @@ tukey_results <- TukeyHSD(region_wk_spr_linear_aov)
 # View the results
 print(tukey_results)
 ```
+Not Significant
 
 ################################################################################################################################################################################################################################################################################################################################################################
 
@@ -964,6 +993,7 @@ tukey_results <- TukeyHSD(region_wk_cbou_hydro_aov)
 # View the results
 print(tukey_results)
 ```
+Not significant (wetland-none is close though at 0.07)
 
 ```{r}
 #run anova on linear targets
@@ -976,6 +1006,7 @@ tukey_results <- TukeyHSD(region_wk_cbou_linear_aov)
 # View the results
 print(tukey_results)
 ```
+Not Significant
 
 ############################################################################################################################################################################################################################
   
@@ -1017,6 +1048,13 @@ tukey_results <- TukeyHSD(region_wk_cbou_smr_hydro_aov)
 # View the results
 print(tukey_results)
 ```
+               Df Sum Sq Mean Sq F value  Pr(>F)   
+target_hydro    2     14   6.912   4.952 0.00715 **
+
+                        diff         lwr         upr     p adj
+Wetland-Shoreline -0.3415549 -0.59747378 -0.08563595 0.0050335
+
+******Not significantly different from NONE
 
 ```{r}
 #run anova on linear targets
@@ -1029,6 +1067,7 @@ tukey_results <- TukeyHSD(region_wk_cbou_smr_linear_aov)
 # View the results
 print(tukey_results)
 ```
+Not Significant
 
 ############################################################################################################################################################################################################################
 
@@ -1070,6 +1109,7 @@ tukey_results <- TukeyHSD(region_wk_cbou_fll_hydro_aov)
 # View the results
 print(tukey_results)
 ```
+Not Significant
 
 ```{r}
 #run anova on linear targets
@@ -1082,6 +1122,7 @@ tukey_results <- TukeyHSD(region_wk_cbou_fll_linear_aov)
 # View the results
 print(tukey_results)
 ```
+Not Significant
 
 ################################################################################################################################################################################################################################################
 
@@ -1123,6 +1164,7 @@ tukey_results <- TukeyHSD(region_wk_cbou_wtr_hydro_aov)
 # View the results
 print(tukey_results)
 ```
+Not Significant
 
 ```{r}
 #run anova on linear targets
@@ -1135,6 +1177,11 @@ tukey_results <- TukeyHSD(region_wk_cbou_wtr_linear_aov)
 # View the results
 print(tukey_results)
 ```
+                Df Sum Sq Mean Sq F value   Pr(>F)    
+target_linear    2    6.0  2.9911    7.94 0.000371 ***
+
+                    diff        lwr        upr     p adj
+Esker-None   0.391574966  0.1607959  0.6223541 0.0002123
 
 ############################################################################################################################################################################################################################
 
@@ -1176,6 +1223,7 @@ tukey_results <- TukeyHSD(region_wk_cbou_spr_hydro_aov)
 # View the results
 print(tukey_results)
 ```
+Not Significant
 
 ```{r}
 #run anova on linear targets
@@ -1188,6 +1236,7 @@ tukey_results <- TukeyHSD(region_wk_cbou_spr_linear_aov)
 # View the results
 print(tukey_results)
 ```
+Not Significant
 
 #SAVE DATA AS CSV
 
