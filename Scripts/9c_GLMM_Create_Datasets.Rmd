@@ -326,7 +326,7 @@ weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort
 # Plot the count data with color based on the 'season' column
 ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
   geom_bar(stat = "identity", position = "dodge", color = "black") +
-  labs(title = "Total Caribou Count Summed Across Locations by Week",
+  labs(title = "Total Caribou Count Summed Across Region by Week",
        x = "Week of the Year",
        y = "Total Caribou Count") +
   theme_minimal() +
@@ -336,7 +336,7 @@ ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
 #plot the Capture rate
 ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
   geom_bar(stat = "identity", position = "dodge", color = "black") +
-  labs(title = "Total Caribou Weekly CR Across Locations by Week",
+  labs(title = "Total Caribou Weekly CR Across Region by Week",
        x = "Week of the Year",
        y = "Total Caribou CR") +
   theme_minimal() +
@@ -361,6 +361,8 @@ Oct 25, 2021 - Dec 13, 2021: Fall
 Dec 20, 2021 - Apr 4, 2022: Winter
 Apr 11, 2022 - June 21, 2022: Spring
 June 22, 2022 - Aug 24, 2022: Summer
+
+Create Caribou-centric Seasons
 ```{r}
 # Let's create a new column for the four seasons based on the specified date ranges
 mod_dat_wk$four_season <- "Summer"
@@ -382,8 +384,10 @@ mod_dat_wk <- mod_dat_wk[, new_column_order]
 # Make it a factor
 mod_dat_wk <- mod_dat_wk %>% 
             mutate_if(is.character, as.factor)
+```
 
-
+Plot it out
+```{r}
 # Let's look at caribou detections summed across locations per week
 # Group by week_year and summarize the total Caribou count and effort
 weekly_sum <- mod_dat_wk %>%
@@ -396,7 +400,7 @@ weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effor
 # Plot the count data with color based on the 'four_season' column
 ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
   geom_bar(stat = "identity", position = "dodge", color = "black") +
-  labs(title = "Total Caribou Count Summed Across Locations by Week",
+  labs(title = "Total Caribou Count Summed Across Region by Week",
        x = "Week of the Year",
        y = "Total Caribou Count") +
   theme_minimal() +
@@ -406,49 +410,290 @@ ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
 # Plot the capture rate
 ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
   geom_bar(stat = "identity", position = "dodge", color = "black") +
-  labs(title = "Total Caribou Weekly CR Across Locations by Week",
+  labs(title = "Total Caribou Weekly CR Across Region by Week",
        x = "Week of the Year",
        y = "Total Caribou CR") +
   theme_minimal() +
   scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
 
+##Plotting
+Create the same plots for each of the other focal species
+Muskox
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Muskox),total_effort = sum(n_days_effort))
+
+#create capture rate per 100 days
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Muskox Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Muskox Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Muskox Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Muskox CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Muskox), total_effort = sum(n_days_effort))
+
+# Create capture rate per 100 days
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Muskox Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Muskox Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Muskox Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Muskox CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+Moose
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Moose),total_effort = sum(n_days_effort))
+
+#create capture rate per 100 days
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Moose Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Moose Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Moose Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Moose CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Moose), total_effort = sum(n_days_effort))
+
+# Create capture rate per 100 days
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Moose Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Moose Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Moose Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Moose CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+Gray.Wolf
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Gray.Wolf),total_effort = sum(n_days_effort))
+
+#create capture rate per 100 days
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Gray Wolf Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Gray Wolf Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Gray Wolf Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Gray Wolf CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Gray.Wolf), total_effort = sum(n_days_effort))
+
+# Create capture rate per 100 days
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Gray Wolf Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Gray Wolf Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Gray Wolf Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Gray Wolf CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+Grizzly.Bear
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Grizzly.Bear),total_effort = sum(n_days_effort))
+
+#create capture rate per 100 days
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Grizzly Bear Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Grizzly Bear Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Grizzly Bear Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Grizzly Bear CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Grizzly.Bear), total_effort = sum(n_days_effort))
+
+# Create capture rate per 100 days
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Grizzly Bear Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Grizzly Bear Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Grizzly Bear Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Grizzly Bear CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
 ```
 
 map it out
 ```{r}
 # Aggregate data by location and week to get total caribou detections
-total_caribou_by_location_week <- mod_dat_wk %>%
-  group_by(location, week) %>%
-  summarise(total_caribou = sum(Caribou))
+#total_caribou_by_location_week <- mod_dat_wk %>%
+ # group_by(location, week) %>%
+  #summarise(total_caribou = sum(Caribou))
 
 # Merge total caribou detections with latitude and longitude data
-locations_week <- mod_dat_wk %>%
-  distinct(location, latitude, longitude)
+#locations_week <- mod_dat_wk %>%
+ # distinct(location, latitude, longitude)
 
-locations_week <- left_join(locations_week, total_caribou_by_location_week, by = "location") %>%
-  mutate(has_detections = if_else(is.na(total_caribou) | total_caribou == 0, FALSE, TRUE))
+#locations_week <- left_join(locations_week, total_caribou_by_location_week, by = "location") %>%
+ # mutate(has_detections = if_else(is.na(total_caribou) | total_caribou == 0, FALSE, TRUE))
 
 # Create leaflet maps for each week
-maps_folder <- "maps"
-dir.create(maps_folder, showWarnings = FALSE)
+#maps_folder <- "maps"
+#dir.create(maps_folder, showWarnings = FALSE)
 
-for (week in unique(mod_dat_wk$week)) {
-  map_data_week <- filter(locations_week, week == !!week)
-  map <- leaflet(map_data_week) %>%
-    addTiles() %>%
-    addCircleMarkers(
-      ~longitude, 
-      ~latitude, 
-      radius = ~if_else(has_detections, sqrt(total_caribou) * 2, 2), 
-      color = ~if_else(has_detections, "blue", "grey"), 
-      popup = ~paste("Location:", location, "<br>", "Total Caribou Detections:", total_caribou)
-    )
+#for (week in unique(mod_dat_wk$week)) {
+ # map_data_week <- filter(locations_week, week == !!week)
+  #map <- leaflet(map_data_week) %>%
+   # addTiles() %>%
+    #addCircleMarkers(
+     # ~longitude, 
+      #~latitude, 
+      #radius = ~if_else(has_detections, sqrt(total_caribou) * 2, 2), 
+      #color = ~if_else(has_detections, "blue", "grey"), 
+      #popup = ~paste("Location:", location, "<br>", "Total Caribou Detections:", total_caribou)
+    #)
   
   # Save the map as HTML
-  map_file <- file.path(maps_folder, paste0("map_week_", week, ".html"))
-  saveWidget(map, map_file, selfcontained = TRUE)
-}
+  #map_file <- file.path(maps_folder, paste0("map_week_", week, ".html"))
+#  saveWidget(map, map_file, selfcontained = TRUE)
+#}
 
 ```
 
@@ -468,6 +713,8 @@ for (week in unique(mod_dat_wk$week)) {
 # Display the GIF
 #browseURL(gif_file)
 ```
+
+
 
 ##Target Analysis
 ```{r}
@@ -950,6 +1197,310 @@ Very annoyingly, there is one single camera with caribou detections which is not
 
 BIO-TDN-050-06 has only two independent detections, both on 2021-11-24, first of a large bachelor group during the day and next of two females that night. Right in the transitional area between tundra and taiga but the camera micro site is very much needle leaf forest.
 
+##Plotting
+
+Local Scale
+Caribou
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Caribou),total_effort = sum(n_days_effort))
+
+#create capture rate per 100 days
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Caribou Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Caribou CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Caribou), total_effort = sum(n_days_effort))
+
+# Create capture rate per 100 days
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Caribou Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Caribou CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+Muskox
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Muskox),total_effort = sum(n_days_effort))
+
+#create capture rate per 100 days
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Muskox Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Muskox Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Muskox Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Muskox CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Muskox), total_effort = sum(n_days_effort))
+
+# Create capture rate per 100 days
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Muskox Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Muskox Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Muskox Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Muskox CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+Moose
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Moose),total_effort = sum(n_days_effort))
+
+#create capture rate per 100 days
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Moose Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Moose Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Moose Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Moose CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Moose), total_effort = sum(n_days_effort))
+
+# Create capture rate per 100 days
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Moose Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Moose Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Moose Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Moose CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+Gray.Wolf
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Gray.Wolf),total_effort = sum(n_days_effort))
+
+#create capture rate per 100 days
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Gray Wolf Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Gray Wolf Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Gray Wolf Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Gray Wolf CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Gray.Wolf), total_effort = sum(n_days_effort))
+
+# Create capture rate per 100 days
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Gray Wolf Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Gray Wolf Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Gray Wolf Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Gray Wolf CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+Grizzly.Bear
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Grizzly.Bear),total_effort = sum(n_days_effort))
+
+#create capture rate per 100 days
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Grizzly Bear Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Grizzly Bear Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Grizzly Bear Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Grizzly Bear CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Grizzly.Bear), total_effort = sum(n_days_effort))
+
+# Create capture rate per 100 days
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Grizzly Bear Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Grizzly Bear Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Grizzly Bear Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Grizzly Bear CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+
 ################################################################################################################################################################################
 
 # Local, Multiseason, WEEK
@@ -1237,6 +1788,56 @@ tukey_results <- TukeyHSD(region_wk_cbou_spr_linear_aov)
 print(tukey_results)
 ```
 Not Significant
+
+#SUMMARIZE
+
+Create tables summarizing effort and independent detections for each focal species in each subset dataset.
+```{r}
+# List of dataset names
+dataset_names <- c("mod_dat_wk", "mod_dat_wk_summer", "mod_dat_wk_fall", "mod_dat_wk_winter", "mod_dat_wk_spri",
+                    "mod_dat_wk_cbou", "mod_dat_wk_cbou_summer", "mod_dat_wk_cbou_fall", "mod_dat_wk_cbou_winter",
+                    "mod_dat_wk_cbou_spri")
+
+# Get the dataframes from the environment
+datasets <- mget(dataset_names)
+
+# Function to create summary dataframe for each dataset
+summarize_dataset <- function(df, dataset_name) {
+  summary_df <- data.frame(
+    Dataset = dataset_name,
+    Total_Effort = sum(df$n_days_effort),
+    Caribou_Detections = sum(df$Caribou, na.rm = TRUE),
+    Muskox_Detections = sum(df$Muskox, na.rm = TRUE),
+    Moose_Detections = sum(df$Moose, na.rm = TRUE),
+    Gray_Wolf_Detections = sum(df$Gray.Wolf, na.rm = TRUE),
+    Grizzly_Bear_Detections = sum(df$Grizzly.Bear, na.rm = TRUE)
+  )
+  return(summary_df)
+}
+
+# Create summary dataframes for each dataset
+summary_dfs <- mapply(summarize_dataset, datasets, dataset_names, SIMPLIFY = FALSE)
+
+# Combine summary dataframes into a single dataframe
+summary_all <- do.call(rbind, summary_dfs)
+
+# Print summary dataframe
+print(summary_all)
+
+
+```
+                                      Dataset Total_Effort Caribou_Detections Muskox_Detections Moose_Detections Gray_Wolf_Detections Grizzly_Bear_Detections
+mod_dat_wk                         mod_dat_wk        83309               2343               745              180                  130                      38
+mod_dat_wk_summer           mod_dat_wk_summer        30002                370               599               97                   42                      25
+mod_dat_wk_fall               mod_dat_wk_fall        12490               1632                53               13                   34                       0
+mod_dat_wk_winter           mod_dat_wk_winter        19238                223                22               22                   15                       0
+mod_dat_wk_spri               mod_dat_wk_spri        21579                118                71               48                   39                      13
+mod_dat_wk_cbou               mod_dat_wk_cbou        40039               2343               212               29                   57                      37
+mod_dat_wk_cbou_summer mod_dat_wk_cbou_summer        14733                370               180               19                    6                      25
+mod_dat_wk_cbou_fall     mod_dat_wk_cbou_fall         5971               1632                11                2                   27                       0
+mod_dat_wk_cbou_winter mod_dat_wk_cbou_winter         9226                223                 3                1                   13                       0
+mod_dat_wk_cbou_spri     mod_dat_wk_cbou_spri        10109                118                18                7                   11                      12
+
 
 #SAVE DATA AS CSV
 
