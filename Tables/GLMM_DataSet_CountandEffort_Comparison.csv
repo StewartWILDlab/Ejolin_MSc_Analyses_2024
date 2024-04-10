@@ -1,0 +1,11 @@
+"Dataset","Total_Effort","Caribou_Detections","Muskox_Detections","Moose_Detections","Gray_Wolf_Detections","Grizzly_Bear_Detections"
+"mod_dat_wk",83309,2343,745,180,130,38
+"mod_dat_wk_summer",30002,370,599,97,42,25
+"mod_dat_wk_fall",12490,1632,53,13,34,0
+"mod_dat_wk_winter",19238,223,22,22,15,0
+"mod_dat_wk_spri",21579,118,71,48,39,13
+"mod_dat_wk_cbou",40039,2343,212,29,57,37
+"mod_dat_wk_cbou_summer",14733,370,180,19,6,25
+"mod_dat_wk_cbou_fall",5971,1632,11,2,27,0
+"mod_dat_wk_cbou_winter",9226,223,3,1,13,0
+"mod_dat_wk_cbou_spri",10109,118,18,7,11,12
