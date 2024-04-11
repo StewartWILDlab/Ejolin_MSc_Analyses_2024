@@ -19,7 +19,7 @@ if(length(new.packages)) install.packages(new.packages)
 lapply(list.of.packages, require, character.only = TRUE)
 ```
 
-#  Region, Multiseason detections
+# 1. Region, Multiseason detections
 ```{r}
 # Import the weekly regional multiseason dataset created in 9c_GLMM_Create_Datasets
 mod_dat_wk <- read.csv("Processed_Data/glmm_wk_region_multi.csv", header=T)
@@ -72,24 +72,33 @@ summary(glmm_wk_wk)
 ## LCC
 ```{r}
 glmm_wk_lcc <- glmmTMB(Caribou ~ 
-                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
 summary(glmm_wk_lcc)
 ```
 
-
+### LCC Consolidated rare landcovers with most similar landcover class. 
 ```{r}
-effect_plot(glmm_wk_lcc, pred = z.X300_SPPGLM, interval = TRUE, y.label = "Habitat use",
-            data=mod_dat_wk)
+glmm_wk_lcc_3 <- glmmTMB(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_BAR + z.X300_NF + z.X300_WET + z.X300_WAT + z.X300_MFBL + z.X300_TSPS + z.X300_TSPG + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_lcc_3)
 ```
 
+It seems like if you include all landcovers together in the same model you run into numerical issues in the summary() output. Both SPTNF and TSPBDF account for less than 1% of total area captured across our 300m buffers, therefore I'm axing them to minimize low occurrence classifications and get rid of these numerical issues.  
+
+### LCC wout rare landcovers
 ```{r}
-effect_plot(glmm_wk_lcc, pred = four_season, interval = TRUE, y.label = "Habitat use",
-            data=mod_dat_wk)
+glmm_wk_lcc_2 <- glmmTMB(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_lcc_2)
 ```
 
-####Tundra LCC
+###Tundra LCC
 ```{r}
 glmm_wk_lcc_tundra <- glmmTMB(Caribou ~ 
                     z.X300_SPPGLM + z.X300_SPPSLM + z.X300_WET + z.X300_WAT + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
@@ -98,7 +107,7 @@ glmm_wk_lcc_tundra <- glmmTMB(Caribou ~
 summary(glmm_wk_lcc_tundra)
 ```
 
-####Treeline DIstance
+###Treeline DIstance
 ```{r}
 #glmm_wk_treeline <- glmmTMB(Caribou ~ 
 #                    z.treeline_distance_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
@@ -118,6 +127,7 @@ glmm_wk_dem <- glmmTMB(Caribou ~
 summary(glmm_wk_dem)
 ```
 
+###Esker Distance
 ```{r}
 glmm_wk_esker <- glmmTMB(Caribou ~ 
                     z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
@@ -127,7 +137,6 @@ summary(glmm_wk_esker)
 ```
 
 ## Target
-
 ```{r}
 glmm_wk_tgt <- glmmTMB(Caribou ~ 
                      target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
@@ -162,7 +171,7 @@ summary(glmm_wk_ung)
 
 ### Predators
 
-SAME AS COMMITTEE TD MODEL
+SAME AS COMMITTEE TOP DOWN MODEL
 ```{r}
 #glmm_wk_pred <- glmmTMB(Caribou ~ 
 #                    Gray.Wolf + Grizzly.Bear + Wolverine + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
@@ -179,7 +188,7 @@ SAME AS COMMITTEE TD MODEL
 wout target
 ```{r}
 glmm_wk_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_comm_bu)
 ```
@@ -187,7 +196,7 @@ summary(glmm_wk_comm_bu)
 wtarget
 ```{r}
 glmm_wk_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_comm_bu_tgt)
 ```
@@ -231,19 +240,37 @@ summary(glmm_wk_comm_app)
 
 ###Committee Model Selection
 ```{r}
-model.sel(glmm_wk_random_eff, glmm_wk_fourssn, glmm_wk_tgt, glmm_wk_tgt_h, glmm_wk_tgt_l, glmm_wk_comm_bu, glmm_wk_comm_td, glmm_wk_comm_app, glmm_wk_comm_bu_tgt, glmm_wk_comm_td_tgt, glmm_wk_comm_app_tgt)
+model.sel(glmm_wk_random_eff, glmm_wk_wk, glmm_wk_fourssn, glmm_wk_tgt, glmm_wk_tgt_h, glmm_wk_tgt_l, glmm_wk_comm_bu, glmm_wk_comm_td, glmm_wk_comm_app, glmm_wk_comm_bu_tgt, glmm_wk_comm_td_tgt, glmm_wk_comm_app_tgt)
 ```
 
 #############################################################################################
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_random_eff, glmm_wk_snowssn, glmm_wk_fourssn, glmm_wk_wk, glmm_wk_lcc, glmm_wk_lcc_tundra, glmm_wk_dem, glmm_wk_tgt, glmm_wk_tgt_h, glmm_wk_tgt_l, glmm_wk_pred, glmm_wk_ung, glmm_wk_comm_bu, glmm_wk_comm_td, glmm_wk_comm_app, glmm_wk_esker, glmm_wk_comm_bu_tgt, glmm_wk_comm_td_tgt, glmm_wk_comm_app_tgt)
+model.sel(glmm_wk_random_eff, glmm_wk_snowssn, glmm_wk_fourssn, glmm_wk_wk, glmm_wk_lcc, glmm_wk_lcc_2, glmm_wk_lcc_3,  glmm_wk_lcc_tundra, glmm_wk_dem, glmm_wk_tgt, glmm_wk_tgt_h, glmm_wk_tgt_l, glmm_wk_ung, glmm_wk_comm_bu, glmm_wk_comm_td, glmm_wk_comm_app, glmm_wk_esker, glmm_wk_comm_bu_tgt, glmm_wk_comm_td_tgt, glmm_wk_comm_app_tgt)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+summary_output <- capture.output(model.sel(glmm_wk_random_eff, glmm_wk_snowssn, glmm_wk_fourssn, glmm_wk_wk, glmm_wk_lcc, glmm_wk_lcc_2, glmm_wk_lcc_3,  glmm_wk_lcc_tundra, glmm_wk_dem, glmm_wk_tgt, glmm_wk_tgt_h, glmm_wk_tgt_l, glmm_wk_ung, glmm_wk_comm_bu, glmm_wk_comm_td, glmm_wk_comm_app, glmm_wk_esker, glmm_wk_comm_bu_tgt, glmm_wk_comm_td_tgt, glmm_wk_comm_app_tgt))
+
+# Save the model selection to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_models.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+summary_output <- capture.output(summary(glmm_wk_fourssn))
+
+# Save the summary data to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_fourssn.csv", row.names = FALSE)
 ```
 
 ############################################################################################################################################################################################################################
   
-# Region, Summer detection data
+# 2. Region, Summer detection data
 
 ```{r}
 # Import the weekly regional summer dataset created in 9c_GLMM_Create_Datasets
@@ -266,9 +293,7 @@ levels(mod_dat_wk_summer$target_linear)
 glmm_wk_smr_null <- glmmTMB(Caribou ~ 
                      offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 summary(glmm_wk_smr_null)
-```
 
-```{r}
 #week model
 glmm_wk_smr_wk <- glmmTMB(Caribou ~ 
                      week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
@@ -279,9 +304,17 @@ summary(glmm_wk_smr_wk)
 run LCC model
 ```{r}
 glmm_wk_smr_lcc <- glmmTMB(Caribou ~ 
-                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_smr_lcc)
+```
+
+### LCC wout rare
+```{r}
+glmm_wk_smr_lcc_2 <- glmmTMB(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_smr_lcc_2)
 ```
 
 ### Tundra LCC
@@ -292,7 +325,7 @@ glmm_wk_smr_lcc_tundra <- glmmTMB(Caribou ~
 summary(glmm_wk_smr_lcc_tundra)
 ```
 
-###Treeline DIstance
+###Treeline Distance
 ```{r}
 #glmm_wk_smr_treeline <- glmmTMB(Caribou ~ 
 #                    z.treeline_distance_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
@@ -419,7 +452,7 @@ Compare with the model above. If wolf and griz have a strong effect here but ung
 wo tgt
 ```{r}
 glmm_wk_smr_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_smr_comm_bu)
 ```
@@ -427,7 +460,7 @@ summary(glmm_wk_smr_comm_bu)
 w tgt
 ```{r}
 glmm_wk_smr_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_smr_comm_bu_tgt)
 ```
@@ -475,12 +508,30 @@ model.sel(glmm_wk_smr_wk, glmm_wk_smr_null, glmm_wk_smr_tgt_h, glmm_wk_smr_tgt_l
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_smr_null, glmm_wk_smr_wk, glmm_wk_smr_lcc, glmm_wk_smr_lcc_tundra, glmm_wk_smr_dem, glmm_wk_smr_tgt_h, glmm_wk_smr_tgt_l, glmm_wk_smr_tgt, glmm_wk_smr_ung, glmm_wk_smr_comm_bu, glmm_wk_smr_comm_td, glmm_wk_smr_comm_app, glmm_wk_smr_esker)
+model.sel(glmm_wk_smr_null, glmm_wk_smr_wk, glmm_wk_smr_lcc, glmm_wk_smr_lcc_2, glmm_wk_smr_lcc_tundra, glmm_wk_smr_dem, glmm_wk_smr_tgt_h, glmm_wk_smr_tgt_l, glmm_wk_smr_tgt, glmm_wk_smr_ung, glmm_wk_smr_comm_bu, glmm_wk_smr_comm_td, glmm_wk_smr_comm_app, glmm_wk_smr_esker, glmm_wk_smr_comm_bu_tgt, glmm_wk_smr_comm_td_tgt, glmm_wk_smr_comm_app_tgt)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+summary_output <- capture.output(model.sel(glmm_wk_smr_wk, glmm_wk_smr_null, glmm_wk_smr_tgt_h, glmm_wk_smr_tgt_l, glmm_wk_smr_comm_bu, glmm_wk_smr_comm_td, glmm_wk_smr_comm_app, glmm_wk_smr_comm_bu_tgt, glmm_wk_smr_comm_td_tgt, glmm_wk_smr_comm_app_tgt))
+
+# Save the model selection to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_smr_models.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+summary_output <- capture.output(summary(glmm_wk_smr_comm_bu_tgt))
+
+# Save the summary data to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_smr_comm_bu_tgt.csv", row.names = FALSE)
 ```
 
 ############################################################################################################################################################################################################################
 
-# Region, Fall detection data
+# 3. Region, Fall detection data
 ```{r}
 # Create a new data frame for winter
 mod_dat_wk_fall <- read.csv("Processed_Data/glmm_wk_region_fall.csv", header=T)
@@ -514,9 +565,17 @@ summary(glmm_wk_fall_wk)
 ## LCC
 ```{r}
 glmm_wk_fall_lcc <- glmmTMB(Caribou ~ 
-                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_fall_lcc)
+```
+
+### LCC wout rare
+```{r}
+glmm_wk_fall_lcc_2 <- glmmTMB(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fall_lcc_2)
 ```
 
 ### Tundra LCC
@@ -648,7 +707,7 @@ Compare with the model above. If wolf and griz have a strong effect here but ung
 wo target
 ```{r}
 glmm_wk_fll_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_fll_comm_bu)
 ```
@@ -656,7 +715,7 @@ summary(glmm_wk_fll_comm_bu)
 target
 ```{r}
 glmm_wk_fll_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_fll_comm_bu_tgt)
 ```
@@ -704,12 +763,30 @@ model.sel(glmm_wk_fall_wk, glmm_wk_fall_null, glmm_wk_fall_tgt_h, glmm_wk_fall_t
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_fall_null, glmm_wk_fall_wk, glmm_wk_fall_lcc, glmm_wk_fall_lcc_tundra, glmm_wk_fall_dem, glmm_wk_fall_tgt, glmm_wk_fall_tgt_h, glmm_wk_fall_tgt_l, glmm_wk_fall_ung, glmm_wk_fll_comm_bu, glmm_wk_fll_comm_td, glmm_wk_fll_comm_app, glmm_wk_fll_comm_bu_tgt, glmm_wk_fll_comm_td_tgt, glmm_wk_fll_comm_app_tgt, glmm_wk_fall_esker)
+model.sel(glmm_wk_fall_null, glmm_wk_fall_wk, glmm_wk_fall_lcc, glmm_wk_fall_lcc_2, glmm_wk_fall_lcc_tundra, glmm_wk_fall_dem, glmm_wk_fall_tgt, glmm_wk_fall_tgt_h, glmm_wk_fall_tgt_l, glmm_wk_fall_ung, glmm_wk_fll_comm_bu, glmm_wk_fll_comm_td, glmm_wk_fll_comm_app, glmm_wk_fll_comm_bu_tgt, glmm_wk_fll_comm_td_tgt, glmm_wk_fll_comm_app_tgt, glmm_wk_fall_esker)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+summary_output <- capture.output(model.sel(glmm_wk_fall_wk, glmm_wk_fall_null, glmm_wk_fall_tgt_h, glmm_wk_fall_tgt_l, glmm_wk_fll_comm_bu, glmm_wk_fll_comm_td, glmm_wk_fll_comm_app, glmm_wk_fll_comm_bu_tgt, glmm_wk_fll_comm_td_tgt, glmm_wk_fll_comm_app_tgt))
+
+# Save the model selection to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_fll_models.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+summary_output <- capture.output(summary(glmm_wk_fll_comm_bu))
+
+# Save the summary data to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_fll_comm_bu.csv", row.names = FALSE)
 ```
 
 ################################################################################################################################################################################################################################################
 
-# Region, Winter detection data
+# 4. Region, Winter detection data
 ```{r}
 # Create a new data frame for winter
 mod_dat_wk_winter <- read.csv("Processed_Data/glmm_wk_region_wtr.csv", header=T)
@@ -743,9 +820,17 @@ summary(glmm_wk_wtr_wk)
 ## LCC
 ```{r}
 glmm_wk_wtr_lcc <- glmmTMB(Caribou ~ 
-                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_wtr_lcc)
+```
+
+### LCC wout rare
+```{r}
+glmm_wk_wtr_lcc_2 <- glmmTMB(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wtr_lcc_2)
 ```
 
 ### Tundra LCC
@@ -878,7 +963,7 @@ Uber simple models that the committee wants run on every data set and in every s
 wo target
 ```{r}
 glmm_wk_wtr_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_wtr_comm_bu)
 ```
@@ -886,7 +971,7 @@ summary(glmm_wk_wtr_comm_bu)
 w target
 ```{r}
 glmm_wk_wtr_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_wtr_comm_bu_tgt)
 ```
@@ -927,19 +1012,37 @@ summary(glmm_wk_wtr_comm_app_tgt)
 
 ####Committee Model Selection
 ```{r}
-model.sel(glmm_wk_wtr_null, glmm_wk_wtr_wk, glmm_wk_wtr_tgt_l, glmm_wk_wtr_tgt_h, glmm_wk_wtr_comm_bu, glmm_wk_wtr_comm_td, glmm_wk_wtr_comm_app, glmm_wk_wtr_comm_bu_tgt, glmm_wk_wtr_comm_td_tgt, glmm_wk_wtr_comm_app_tgt)
+model.sel(glmm_wk_wtr_null, glmm_wk_wtr_tgt_l, glmm_wk_wtr_tgt_h, glmm_wk_wtr_comm_bu, glmm_wk_wtr_comm_td, glmm_wk_wtr_comm_app, glmm_wk_wtr_comm_bu_tgt, glmm_wk_wtr_comm_td_tgt, glmm_wk_wtr_comm_app_tgt)
 ```
 
 #############################################################################################
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_wtr_null, glmm_wk_wtr_wk, glmm_wk_wtr_lcc, glmm_wk_wtr_lcc_tundra, glmm_wk_wtr_dem, glmm_wk_wtr_tgt, glmm_wk_wtr_tgt_l, glmm_wk_wtr_tgt_h, glmm_wk_wtr_ung, glmm_wk_wtr_comm_bu, glmm_wk_wtr_comm_td, glmm_wk_wtr_comm_app, glmm_wk_wtr_comm_bu_tgt, glmm_wk_wtr_comm_td_tgt, glmm_wk_wtr_comm_app_tgt, glmm_wk_wtr_esker)
+model.sel(glmm_wk_wtr_null, glmm_wk_wtr_wk, glmm_wk_wtr_lcc, glmm_wk_wtr_lcc_2, glmm_wk_wtr_lcc_tundra, glmm_wk_wtr_dem, glmm_wk_wtr_tgt, glmm_wk_wtr_tgt_l, glmm_wk_wtr_tgt_h, glmm_wk_wtr_ung, glmm_wk_wtr_comm_bu, glmm_wk_wtr_comm_td, glmm_wk_wtr_comm_app, glmm_wk_wtr_comm_bu_tgt, glmm_wk_wtr_comm_td_tgt, glmm_wk_wtr_comm_app_tgt, glmm_wk_wtr_esker)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+summary_output <- capture.output(model.sel(glmm_wk_wtr_null, glmm_wk_wtr_tgt_l, glmm_wk_wtr_tgt_h, glmm_wk_wtr_comm_bu, glmm_wk_wtr_comm_td, glmm_wk_wtr_comm_app, glmm_wk_wtr_comm_bu_tgt, glmm_wk_wtr_comm_td_tgt, glmm_wk_wtr_comm_app_tgt))
+
+# Save the model selection to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_wtr_models.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+summary_output <- capture.output(summary(glmm_wk_wtr_comm_bu))
+
+# Save the summary data to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_wtr_comm_bu.csv", row.names = FALSE)
 ```
 
 ############################################################################################################################################################################################################################
 
-# Region, Spring detection data
+# 5. Region, Spring detection data
 ```{r}
 # Create a new data frame for winter
 mod_dat_wk_spri <- read.csv("Processed_Data/glmm_wk_region_spr.csv", header=T)
@@ -973,9 +1076,17 @@ summary(glmm_wk_spri_wk)
 ## LCC
 ```{r}
 glmm_wk_spri_lcc <- glmmTMB(Caribou ~ 
-                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_spri_lcc)
+```
+
+### LCC wout rare
+```{r}
+glmm_wk_spri_lcc_2 <- glmmTMB(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_spri_lcc_2)
 ```
 
 ### Tundra LCC
@@ -1106,7 +1217,7 @@ Uber simple models that the committee wants run on every data set and in every s
 wo target
 ```{r}
 glmm_wk_spr_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_spr_comm_bu)
 ```
@@ -1114,7 +1225,7 @@ summary(glmm_wk_spr_comm_bu)
 wtarget
 ```{r}
 glmm_wk_spr_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_spr_comm_bu_tgt)
 ```
@@ -1155,7 +1266,7 @@ summary(glmm_wk_spr_comm_app_tgt)
 
 ####Committee Model Selection
 ```{r}
-model.sel(glmm_wk_spri_null, glmm_wk_spri_wk, glmm_wk_spri_tgt_h, glmm_wk_spri_tgt_l, glmm_wk_spr_comm_bu, glmm_wk_spr_comm_td, glmm_wk_spr_comm_app, glmm_wk_spr_comm_bu_tgt, glmm_wk_spr_comm_td_tgt, glmm_wk_spr_comm_app_tgt)
+model.sel(glmm_wk_spri_null, glmm_wk_spri_tgt_h, glmm_wk_spri_tgt_l, glmm_wk_spr_comm_bu, glmm_wk_spr_comm_td, glmm_wk_spr_comm_app, glmm_wk_spr_comm_bu_tgt, glmm_wk_spr_comm_td_tgt, glmm_wk_spr_comm_app_tgt)
 ```
 
 
@@ -1163,12 +1274,30 @@ model.sel(glmm_wk_spri_null, glmm_wk_spri_wk, glmm_wk_spri_tgt_h, glmm_wk_spri_t
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_spri_null, glmm_wk_spri_wk, glmm_wk_spri_lcc, glmm_wk_spri_lcc_tundra, glmm_wk_spri_dem, glmm_wk_spri_tgt, glmm_wk_spri_tgt_h, glmm_wk_spri_tgt_l, glmm_wk_spri_ung, glmm_wk_spr_comm_bu, glmm_wk_spr_comm_td, glmm_wk_spr_comm_app, glmm_wk_spri_esker, glmm_wk_spr_comm_bu_tgt, glmm_wk_spr_comm_td_tgt, glmm_wk_spr_comm_app_tgt)
+model.sel(glmm_wk_spri_null, glmm_wk_spri_wk, glmm_wk_spri_lcc, glmm_wk_spri_lcc_2, glmm_wk_spri_lcc_tundra, glmm_wk_spri_dem, glmm_wk_spri_tgt, glmm_wk_spri_tgt_h, glmm_wk_spri_tgt_l, glmm_wk_spri_ung, glmm_wk_spr_comm_bu, glmm_wk_spr_comm_td, glmm_wk_spr_comm_app, glmm_wk_spri_esker, glmm_wk_spr_comm_bu_tgt, glmm_wk_spr_comm_td_tgt, glmm_wk_spr_comm_app_tgt)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+summary_output <- capture.output(model.sel(glmm_wk_spri_null, glmm_wk_spri_tgt_h, glmm_wk_spri_tgt_l, glmm_wk_spr_comm_bu, glmm_wk_spr_comm_td, glmm_wk_spr_comm_app, glmm_wk_spr_comm_bu_tgt, glmm_wk_spr_comm_td_tgt, glmm_wk_spr_comm_app_tgt))
+
+# Save the model selection to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_spr_models.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+summary_output <- capture.output(summary(glmm_wk_spr_comm_bu_tgt))
+
+# Save the summary data to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_spr_comm_bu_tgt.csv", row.names = FALSE)
 ```
 
 ################################################################################################################################################################################################################################################################################################
 
-# Local, Multiseason, WEEK
+#6. Local, Multiseason, WEEK
 ```{r}
 mod_dat_wk_cbou <- read.csv("Processed_Data/glmm_wk_local_multi.csv", header=T)
 
@@ -1212,10 +1341,19 @@ summary(glmm_wk_cbou_wk)
 ## LCC
 ```{r}
 glmm_wk_cbou_lcc <- glmmTMB(Caribou ~ 
-                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
 summary(glmm_wk_cbou_lcc)
+```
+
+### LCC wout rare
+```{r}
+glmm_wk_cbou_lcc_2 <- glmmTMB(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_cbou_lcc_2)
 ```
 
 ###Tundra LCC
@@ -1302,7 +1440,7 @@ summary(glmm_wk_cbou_ung)
 wo target
 ```{r}
 glmm_wk_cbou_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_comm_bu)
 ```
@@ -1310,7 +1448,7 @@ summary(glmm_wk_cbou_comm_bu)
 wtarget
 ```{r}
 glmm_wk_cbou_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_comm_bu_tgt)
 ```
@@ -1351,19 +1489,37 @@ summary(glmm_wk_cbou_comm_app_tgt)
 
 ###Committee Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_null, glmm_wk_cbou_fourssn, glmm_wk_cbou_tgt_l, glmm_wk_cbou_tgt_h, glmm_wk_cbou_comm_bu, glmm_wk_cbou_comm_td, glmm_wk_cbou_comm_app, glmm_wk_cbou_comm_bu_tgt, glmm_wk_cbou_comm_td_tgt, glmm_wk_cbou_comm_app_tgt)
+model.sel(glmm_wk_cbou_null, glmm_wk_cbou_wk, glmm_wk_cbou_fourssn, glmm_wk_cbou_tgt_l, glmm_wk_cbou_tgt_h, glmm_wk_cbou_comm_bu, glmm_wk_cbou_comm_td, glmm_wk_cbou_comm_app, glmm_wk_cbou_comm_bu_tgt, glmm_wk_cbou_comm_td_tgt, glmm_wk_cbou_comm_app_tgt)
 ```
 
 #############################################################################################
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_null, glmm_wk_cbou_snowssn, glmm_wk_cbou_fourssn, glmm_wk_cbou_wk, glmm_wk_cbou_lcc, glmm_wk_cbou_lcc_tundra, glmm_wk_cbou_dem, glmm_wk_cbou_tgt, glmm_wk_cbou_tgt_l, glmm_wk_cbou_tgt_h, glmm_wk_cbou_ung, glmm_wk_cbou_comm_bu, glmm_wk_cbou_comm_td, glmm_wk_cbou_comm_app, glmm_wk_cbou_treeline, glmm_wk_cbou_esker, glmm_wk_cbou_comm_bu_tgt, glmm_wk_cbou_comm_td_tgt, glmm_wk_cbou_comm_app_tgt)
+model.sel(glmm_wk_cbou_null, glmm_wk_cbou_snowssn, glmm_wk_cbou_fourssn, glmm_wk_cbou_wk, glmm_wk_cbou_lcc, glmm_wk_cbou_lcc_2, glmm_wk_cbou_lcc_tundra, glmm_wk_cbou_dem, glmm_wk_cbou_tgt, glmm_wk_cbou_tgt_l, glmm_wk_cbou_tgt_h, glmm_wk_cbou_ung, glmm_wk_cbou_comm_bu, glmm_wk_cbou_comm_td, glmm_wk_cbou_comm_app, glmm_wk_cbou_treeline, glmm_wk_cbou_esker, glmm_wk_cbou_comm_bu_tgt, glmm_wk_cbou_comm_td_tgt, glmm_wk_cbou_comm_app_tgt)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+summary_output <- capture.output(model.sel(glmm_wk_cbou_null, glmm_wk_cbou_wk, glmm_wk_cbou_fourssn, glmm_wk_cbou_tgt_l, glmm_wk_cbou_tgt_h, glmm_wk_cbou_comm_bu, glmm_wk_cbou_comm_td, glmm_wk_cbou_comm_app, glmm_wk_cbou_comm_bu_tgt, glmm_wk_cbou_comm_td_tgt, glmm_wk_cbou_comm_app_tgt))
+
+# Save the model selection to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_cbou_models.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+summary_output <- capture.output(summary(glmm_wk_cbou_wk))
+
+# Save the summary data to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_cbou_wk.csv", row.names = FALSE)
 ```
 
 ################################################################################################################################################################################################
 
-# Local, Summer, WEEKLY detection data
+#7. Local, Summer, WEEKLY detection data
 ```{r}
 # Create a new data frame for summer
 mod_dat_wk_cbou_summer <- read.csv("Processed_Data/glmm_wk_local_smr.csv", header=T)
@@ -1397,9 +1553,17 @@ summary(glmm_wk_cbou_smr_wk)
 ## LCC
 ```{r}
 glmm_wk_cbou_smr_lcc <- glmmTMB(Caribou ~ 
-                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_smr_lcc)
+```
+
+### LCC wout rare
+```{r}
+glmm_wk_cbou_smr_lcc_2 <- glmmTMB(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_lcc_2)
 ```
 
 ### Tundra LCC
@@ -1526,7 +1690,7 @@ NOT GOING DOWN THIS ROUTE...
 wo target
 ```{r}
 glmm_wk_cbou_smr_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_smr_comm_bu)
 ```
@@ -1534,7 +1698,7 @@ summary(glmm_wk_cbou_smr_comm_bu)
 w target
 ```{r}
 glmm_wk_cbou_smr_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_smr_comm_bu_tgt)
 ```
@@ -1590,12 +1754,30 @@ summary(glmm_wk_cbou_smr_glob)
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_smr_null, glmm_wk_cbou_smr_wk, glmm_wk_cbou_smr_lcc_tundra, glmm_wk_cbou_smr_dem, glmm_wk_cbou_smr_tgt, glmm_wk_cbou_smr_tgt_h, glmm_wk_cbou_smr_tgt_l, glmm_wk_cbou_smr_ung, glmm_wk_cbou_smr_comm_bu, glmm_wk_cbou_smr_comm_td, glmm_wk_cbou_smr_comm_app, glmm_wk_cbou_smr_comm_bu_tgt, glmm_wk_cbou_smr_comm_td_tgt, glmm_wk_cbou_smr_comm_app_tgt, glmm_wk_cbou_smr_esker, glmm_wk_cbou_smr_glob, glmm_wk_cbou_smr_treeline)
+model.sel(glmm_wk_cbou_smr_null, glmm_wk_cbou_smr_wk, glmm_wk_cbou_smr_lcc, glmm_wk_cbou_smr_lcc_2, glmm_wk_cbou_smr_lcc_tundra, glmm_wk_cbou_smr_dem, glmm_wk_cbou_smr_tgt, glmm_wk_cbou_smr_tgt_h, glmm_wk_cbou_smr_tgt_l, glmm_wk_cbou_smr_ung, glmm_wk_cbou_smr_comm_bu, glmm_wk_cbou_smr_comm_td, glmm_wk_cbou_smr_comm_app, glmm_wk_cbou_smr_comm_bu_tgt, glmm_wk_cbou_smr_comm_td_tgt, glmm_wk_cbou_smr_comm_app_tgt, glmm_wk_cbou_smr_esker, glmm_wk_cbou_smr_glob, glmm_wk_cbou_smr_treeline)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+summary_output <- capture.output(model.sel(glmm_wk_cbou_smr_null, glmm_wk_cbou_smr_wk, glmm_wk_cbou_smr_tgt_h, glmm_wk_cbou_smr_tgt_l, glmm_wk_cbou_smr_comm_bu, glmm_wk_cbou_smr_comm_td, glmm_wk_cbou_smr_comm_app, glmm_wk_cbou_smr_comm_bu_tgt, glmm_wk_cbou_smr_comm_td_tgt, glmm_wk_cbou_smr_comm_app_tgt))
+
+# Save the model selection to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_cbou_smr_models.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+summary_output <- capture.output(summary(glmm_wk_cbou_smr_comm_bu_tgt))
+
+# Save the summary data to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_cbou_smr_comm_bu_tgt.csv", row.names = FALSE)
 ```
 
 ################################################################################################################################################################################################
 
-# Local, Fall, WEEKLY detection data
+# 8. Local, Fall, WEEKLY detection data
 ```{r}
 # Create a new data frame for winter
 mod_dat_wk_cbou_fall <- read.csv("Processed_Data/glmm_wk_local_fall.csv", header=T)
@@ -1629,9 +1811,17 @@ summary(glmm_wk_cbou_fall_wk)
 ## LCC
 ```{r}
 glmm_wk_cbou_fall_lcc <- glmmTMB(Caribou ~ 
-                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_fall_lcc)
+```
+
+### LCC Cons
+```{r}
+glmm_wk_cbou_fall_lcc_2 <- glmmTMB(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fall_lcc_2)
 ```
 
 ### Tundra LCC
@@ -1718,7 +1908,7 @@ summary(glmm_wk_cbou_fall_ung)
 wo target
 ```{r}
 glmm_wk_cbou_fll_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_fll_comm_bu)
 ```
@@ -1726,7 +1916,7 @@ summary(glmm_wk_cbou_fll_comm_bu)
 w tgt
 ```{r}
 glmm_wk_cbou_fll_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_fll_comm_bu_tgt)
 ```
@@ -1782,12 +1972,30 @@ summary(glmm_wk_cbou_fall_glob)
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_fall_null, glmm_wk_cbou_fall_wk, glmm_wk_cbou_fall_lcc, glmm_wk_cbou_fall_lcc_tundra, glmm_wk_cbou_fall_dem, glmm_wk_cbou_fall_tgt, glmm_wk_cbou_fall_tgt_h, glmm_wk_cbou_fall_tgt_l, glmm_wk_cbou_fall_ung, glmm_wk_cbou_fll_comm_bu, glmm_wk_cbou_fll_comm_td, glmm_wk_cbou_fll_comm_app, glmm_wk_cbou_fall_esker, glmm_wk_cbou_fll_comm_bu_tgt, glmm_wk_cbou_fll_comm_td_tgt, glmm_wk_cbou_fll_comm_app_tgt, glmm_wk_cbou_fall_glob, glmm_wk_cbou_fall_treeline)
+model.sel(glmm_wk_cbou_fall_null, glmm_wk_cbou_fall_wk, glmm_wk_cbou_fall_lcc, glmm_wk_cbou_fall_lcc_2, glmm_wk_cbou_fall_lcc_tundra, glmm_wk_cbou_fall_dem, glmm_wk_cbou_fall_tgt, glmm_wk_cbou_fall_tgt_h, glmm_wk_cbou_fall_tgt_l, glmm_wk_cbou_fall_ung, glmm_wk_cbou_fll_comm_bu, glmm_wk_cbou_fll_comm_td, glmm_wk_cbou_fll_comm_app, glmm_wk_cbou_fall_esker, glmm_wk_cbou_fll_comm_bu_tgt, glmm_wk_cbou_fll_comm_td_tgt, glmm_wk_cbou_fll_comm_app_tgt, glmm_wk_cbou_fall_glob, glmm_wk_cbou_fall_treeline)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+summary_output <- capture.output(model.sel(glmm_wk_cbou_fall_null, glmm_wk_cbou_fall_wk, glmm_wk_cbou_fall_tgt_h, glmm_wk_cbou_fall_tgt_l, glmm_wk_cbou_fll_comm_bu, glmm_wk_cbou_fll_comm_td, glmm_wk_cbou_fll_comm_app, glmm_wk_cbou_fll_comm_bu_tgt, glmm_wk_cbou_fll_comm_td_tgt, glmm_wk_cbou_fll_comm_app_tgt))
+
+# Save the model selection to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_cbou_fll_models.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+summary_output <- capture.output(summary(glmm_wk_cbou_fll_comm_bu))
+
+# Save the summary data to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_cbou_fll_comm_bu.csv", row.names = FALSE)
 ```
 
 ################################################################################################################################################################################################
 
-# Local, Winter, WEEKLY detection data
+# 9. Local, Winter, WEEKLY detection data
 ```{r}
 # Create a new data frame for winter
 mod_dat_wk_cbou_winter <- read.csv("Processed_Data/glmm_wk_local_wtr.csv", header=T)
@@ -1821,9 +2029,17 @@ summary(glmm_wk_cbou_wtr_wk)
 ## LCC
 ```{r}
 glmm_wk_cbou_wtr_lcc <- glmmTMB(Caribou ~ 
-                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_wtr_lcc)
+```
+
+### LCC wout rare
+```{r}
+glmm_wk_cbou_wtr_lcc_2 <- glmmTMB(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_wtr_lcc_2)
 ```
 
 ### Tundra LCC
@@ -1913,7 +2129,7 @@ summary(glmm_wk_cbou_wtr_ung)
 wo tgt
 ```{r}
 glmm_wk_cbou_wtr_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_wtr_comm_bu)
 ```
@@ -1921,7 +2137,7 @@ summary(glmm_wk_cbou_wtr_comm_bu)
 w tgt
 ```{r}
 glmm_wk_cbou_wtr_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_wtr_comm_bu_tgt)
 ```
@@ -1962,19 +2178,38 @@ summary(glmm_wk_cbou_wtr_comm_app_tgt)
 
 ####Committee Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_wtr_wk, glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_tgt_h, glmm_wk_cbou_wtr_tgt_l, glmm_wk_cbou_wtr_comm_bu, glmm_wk_cbou_wtr_comm_td, glmm_wk_cbou_wtr_comm_app, glmm_wk_cbou_wtr_comm_bu_tgt, glmm_wk_cbou_wtr_comm_td_tgt, glmm_wk_cbou_wtr_comm_app_tgt)
+model.sel(glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_tgt_h, glmm_wk_cbou_wtr_tgt_l, glmm_wk_cbou_wtr_comm_bu, glmm_wk_cbou_wtr_comm_td, glmm_wk_cbou_wtr_comm_app, glmm_wk_cbou_wtr_comm_bu_tgt, glmm_wk_cbou_wtr_comm_td_tgt, glmm_wk_cbou_wtr_comm_app_tgt)
 ```
 
 #############################################################################################
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_wk, glmm_wk_cbou_wtr_lcc, glmm_wk_cbou_wtr_lcc_tundra, glmm_wk_cbou_wtr_dem, glmm_wk_cbou_wtr_tgt, glmm_wk_cbou_wtr_tgt_h, glmm_wk_cbou_wtr_tgt_l, glmm_wk_cbou_wtr_ung, glmm_wk_cbou_wtr_comm_bu, glmm_wk_cbou_wtr_comm_td, glmm_wk_cbou_wtr_comm_app, glmm_wk_cbou_wtr_comm_bu_tgt, glmm_wk_cbou_wtr_comm_td_tgt, glmm_wk_cbou_wtr_comm_app_tgt, glmm_wk_cbou_wtr_treeline, glmm_wk_cbou_wtr_esker)
+model.sel(glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_wk, glmm_wk_cbou_wtr_lcc, glmm_wk_cbou_wtr_lcc_2, glmm_wk_cbou_wtr_lcc_tundra, glmm_wk_cbou_wtr_dem, glmm_wk_cbou_wtr_tgt, glmm_wk_cbou_wtr_tgt_h, glmm_wk_cbou_wtr_tgt_l, glmm_wk_cbou_wtr_ung, glmm_wk_cbou_wtr_comm_bu, glmm_wk_cbou_wtr_comm_td, glmm_wk_cbou_wtr_comm_app, glmm_wk_cbou_wtr_comm_bu_tgt, glmm_wk_cbou_wtr_comm_td_tgt, glmm_wk_cbou_wtr_comm_app_tgt, glmm_wk_cbou_wtr_treeline, glmm_wk_cbou_wtr_esker)
 ```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+summary_output <- capture.output(model.sel(glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_tgt_h, glmm_wk_cbou_wtr_tgt_l, glmm_wk_cbou_wtr_comm_bu, glmm_wk_cbou_wtr_comm_td, glmm_wk_cbou_wtr_comm_app, glmm_wk_cbou_wtr_comm_bu_tgt, glmm_wk_cbou_wtr_comm_td_tgt, glmm_wk_cbou_wtr_comm_app_tgt))
+
+# Save the model selection to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_cbou_wtr_models.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+summary_output <- capture.output(summary(glmm_wk_cbou_wtr_comm_td))
+
+# Save the summary data to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_cbou_wtr_comm_td.csv", row.names = FALSE)
+```
+
 
 ############################################################################################################################################################################################################################
 
-# Local, Spring, WEEKLY detection data
+# 10. Local, Spring, WEEKLY detection data
 ```{r}
 # Create a new data frame for winter
 mod_dat_wk_cbou_spri <- read.csv("Processed_Data/glmm_wk_local_spr.csv", header=T)
@@ -2008,11 +2243,18 @@ summary(glmm_wk_cbou_spri_wk)
 ## LCC
 ```{r}
 glmm_wk_cbou_spri_lcc <- glmmTMB(Caribou ~ 
-                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.X300_TSPBDF + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_spri_lcc)
 ```
 
+### LCC wout rare
+```{r}
+glmm_wk_cbou_spri_lcc_2 <- glmmTMB(Caribou ~ 
+                    z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_spri_lcc_2)
+```
 
 ### Tundra LCC
 ```{r}
@@ -2105,7 +2347,7 @@ summary(glmm_wk_cbou_spri_ung)
 wo tgt
 ```{r}
 glmm_wk_cbou_spr_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_spr_comm_bu)
 ```
@@ -2113,7 +2355,7 @@ summary(glmm_wk_cbou_spr_comm_bu)
 w tgt
 ```{r}
 glmm_wk_cbou_spr_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_SPTNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_BAR + z.X300_TSPBDF + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_spr_comm_bu_tgt)
 ```
@@ -2154,14 +2396,32 @@ summary(glmm_wk_cbou_spr_comm_app_tgt)
 
 ####Committee Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spri_wk, glmm_wk_cbou_spri_tgt_h, glmm_wk_cbou_spri_tgt_l, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_app, glmm_wk_cbou_spr_comm_bu_tgt, glmm_wk_cbou_spr_comm_td_tgt, glmm_wk_cbou_spr_comm_app_tgt)
+model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spri_tgt_h, glmm_wk_cbou_spri_tgt_l, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_app, glmm_wk_cbou_spr_comm_bu_tgt, glmm_wk_cbou_spr_comm_td_tgt, glmm_wk_cbou_spr_comm_app_tgt)
 ```
 
 #############################################################################################
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spri_wk, glmm_wk_cbou_spri_lcc, glmm_wk_cbou_spri_lcc_tundra, glmm_wk_cbou_spri_dem, glmm_wk_cbou_spri_tgt, glmm_wk_cbou_spri_tgt_h, glmm_wk_cbou_spri_tgt_l, glmm_wk_cbou_spri_ung, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_app, glmm_wk_cbou_spr_comm_bu_tgt, glmm_wk_cbou_spr_comm_td_tgt, glmm_wk_cbou_spr_comm_app_tgt, glmm_wk_cbou_spri_treeline, glmm_wk_cbou_spri_esker)
+model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spri_wk, glmm_wk_cbou_spri_lcc, glmm_wk_cbou_spri_lcc_2, glmm_wk_cbou_spri_lcc_tundra, glmm_wk_cbou_spri_dem, glmm_wk_cbou_spri_tgt, glmm_wk_cbou_spri_tgt_h, glmm_wk_cbou_spri_tgt_l, glmm_wk_cbou_spri_ung, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_app, glmm_wk_cbou_spr_comm_bu_tgt, glmm_wk_cbou_spr_comm_td_tgt, glmm_wk_cbou_spr_comm_app_tgt, glmm_wk_cbou_spri_treeline, glmm_wk_cbou_spri_esker)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+summary_output <- capture.output(model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spri_tgt_h, glmm_wk_cbou_spri_tgt_l, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_app, glmm_wk_cbou_spr_comm_bu_tgt, glmm_wk_cbou_spr_comm_td_tgt, glmm_wk_cbou_spr_comm_app_tgt))
+
+# Save the model selection to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_cbou_spr_models.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+summary_output <- capture.output(summary(glmm_wk_cbou_spri_null))
+
+# Save the summary data to a CSV file
+write.csv(summary_output, file = "Tables/glmm_wk_cbou_spri_null.csv", row.names = FALSE)
 ```
 
 

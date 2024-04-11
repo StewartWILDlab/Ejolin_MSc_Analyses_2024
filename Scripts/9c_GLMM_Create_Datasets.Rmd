@@ -1824,6 +1824,7 @@ summary_all <- do.call(rbind, summary_dfs)
 # Print summary dataframe
 print(summary_all)
 
+#save table
 write.csv(summary_all, file = "Tables/GLMM_DataSet_CountandEffort_Comparison.csv", row.names = F)
 ```
                                       Dataset Total_Effort Caribou_Detections Muskox_Detections Moose_Detections Gray_Wolf_Detections Grizzly_Bear_Detections
