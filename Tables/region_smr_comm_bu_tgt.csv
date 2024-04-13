@@ -1,0 +1,41 @@
+x,,,,,
+ Family: nbinom2  ( log ),,,,,
+Formula:          Caribou ~ z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET +  ,,,,,
+    z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR +  ,,,,,
+    z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_linear +  ,,,,,
+    target_hydro + offset(log(n_days_effort)) + (1 | location_site),,,,,
+Data: mod_dat_wk_summer,,,,,
+,,,,,
+AIC,BIC,logLik,deviance,df.resid,
+1013.5,1135.9,-487.8,975.5,4605,
+,,,,,
+Random effects:,,,,,
+,,,,,
+Conditional model:,,,,,
+Groups,Name,Variance,Std.Dev.,,
+location_site,(Intercept),3.361,1.833,,
+"Number of obs: 4624, groups:  location_site, 60",,,,,
+,,,,,
+Dispersion parameter for nbinom2 family (): 0.146 ,,,,,
+,,,,,
+Conditional model:,,,,,
+,Estimate,Std. Error,z value,Pr(>|z|),
+(Intercept),-4.71E+03,2.69E+05,-0.018,0.98605,
+z.X300_SPPGLM,-2.44E+01,1.15E+01,-2.114,0.03454,*
+z.X300_SPPSLM,-3.76E+01,1.83E+01,-2.055,0.03992,*
+z.X300_TSPNF,-4.27E+01,2.02E+01,-2.11,0.03486,*
+z.X300_WET,-1.57E+01,7.01E+00,-2.235,0.02544,*
+z.X300_WAT,-2.15E+01,1.00E+01,-2.144,0.03203,*
+z.X300_MF,-2.15E+01,1.09E+01,-1.975,0.04823,*
+z.X300_TSPS,-1.06E+04,6.04E+05,-0.018,0.98607,
+z.X300_TSPG,-3.18E+01,1.30E+01,-2.45,0.01428,*
+z.X300_BAR,-7.94E+00,3.81E+00,-2.084,0.03714,*
+z.mean_elev_300,-5.61E-01,4.85E-01,-1.156,0.24772,
+z.mean_tri_300,1.47E+00,9.48E-01,1.55,0.12102,
+z.esker_dist_m,-9.14E-01,9.37E-01,-0.976,0.32933,
+target_linearEsker,-2.88E-02,1.20E+00,-0.024,0.98082,
+target_linearTrail,2.87E+00,9.51E-01,3.018,0.00254,**
+target_hydroShoreline,1.23E+00,6.60E-01,1.862,0.06257,.
+target_hydroWetland,-6.48E-01,7.20E-01,-0.9,0.36799,
+---,,,,,
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1,,,,,
