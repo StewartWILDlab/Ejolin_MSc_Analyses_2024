@@ -1,0 +1,49 @@
+x,,,,,,,,,,,
+Model selection table ,,,,,,,,,,,
+,cnd((Int)),dsp((Int)),cnd(off(log(n_dys_eff))),cnd(wek),cnd(z.esk_dst_m),cnd(z.men_elv_300),cnd(z.men_tri_300),cnd(z.X30_BAR),,,
+glmm_wk_wk,-9.859,+,+,0.0729,,,,,,,
+glmm_wk_comm_bu_tgt,-7.891,+,+,,-0.4047,0.4814,-0.3218,-0.1235,,,
+glmm_wk_comm_bu,-7.733,+,+,,-0.4554,0.2208,-0.1814,-0.1194,,,
+glmm_wk_comm_td,-7.528,+,+,,,,,,,,
+glmm_wk_comm_td_tgt,-7.579,+,+,,,,,,,,
+glmm_wk_comm_app_2,-7.518,+,+,,,,,,,,
+glmm_wk_comm_app_3,-7.494,+,+,,,,,,,,
+glmm_wk_comm_app_2_tgt,-7.572,+,+,,,,,,,,
+glmm_wk_comm_app_3_tgt,-7.556,+,+,,,,,,,,
+glmm_wk_random_eff,-7.498,+,+,,,,,,,,
+,cnd(z.X30_MF),cnd(z.X30_SPP),cnd(z.X30_TSPG),cnd(z.X30_TSPN),cnd(z.X30_TSPS),cnd(z.X30_WAT),cnd(z.X30_WET),cnd(scl(Gry.Wlf)),,,
+glmm_wk_wk,,,,,,,,,,,
+glmm_wk_comm_bu_tgt,-0.1343,-0.01755,-2.564,-2.561,-2.792,-0.1272,-0.4238,,,,
+glmm_wk_comm_bu,-0.09128,-0.03878,-2.691,-2.571,-2.843,-0.1592,-0.3807,,,,
+glmm_wk_comm_td,,,,,,,,0.1614,,,
+glmm_wk_comm_td_tgt,,,,,,,,0.1616,,,
+glmm_wk_comm_app_2,,,,,,,,0.1615,,,
+glmm_wk_comm_app_3,,,,,,,,,,,
+glmm_wk_comm_app_2_tgt,,,,,,,,0.1616,,,
+glmm_wk_comm_app_3_tgt,,,,,,,,,,,
+glmm_wk_random_eff,,,,,,,,,,,
+,cnd(scl(Grz.Ber)),cnd(trg_hyd),cnd(trg_lnr),cnd(scl(Mos)),cnd(scl(Msk)),cnd(scl(Prd)),cnd(scl(Ung)),cnd(Prd:Ung),df,logLik,AICc
+glmm_wk_wk,,,,,,,,,4,-3251.874,6511.8
+glmm_wk_comm_bu_tgt,,+,+,,,,,,18,-3338.993,6714
+glmm_wk_comm_bu,,,,,,,,,14,-3343.449,6714.9
+glmm_wk_comm_td,-0.07098,,,,,,,,5,-3397.973,6806
+glmm_wk_comm_td_tgt,-0.06927,+,+,,,,,,9,-3394.637,6807.3
+glmm_wk_comm_app_2,-0.07117,,,-0.04503,-0.1596,,,,7,-3396.776,6807.6
+glmm_wk_comm_app_3,,,,,,0.1342,-0.1568,-16.82,6,-3398.357,6808.7
+glmm_wk_comm_app_2_tgt,-0.06935,+,+,-0.04689,-0.1643,,,,11,-3393.374,6808.8
+glmm_wk_comm_app_3_tgt,,+,+,,,0.1351,-0.1622,-17.09,10,-3394.917,6809.9
+glmm_wk_random_eff,,,,,,,,,3,-3403.959,6813.9
+,delta,weight,,,,,,,,,
+glmm_wk_wk,0,1,,,,,,,,,
+glmm_wk_comm_bu_tgt,202.29,0,,,,,,,,,
+glmm_wk_comm_bu,203.18,0,,,,,,,,,
+glmm_wk_comm_td,294.2,0,,,,,,,,,
+glmm_wk_comm_td_tgt,295.54,0,,,,,,,,,
+glmm_wk_comm_app_2,295.81,0,,,,,,,,,
+glmm_wk_comm_app_3,296.97,0,,,,,,,,,
+glmm_wk_comm_app_2_tgt,297.02,0,,,,,,,,,
+glmm_wk_comm_app_3_tgt,298.1,0,,,,,,,,,
+glmm_wk_random_eff,302.17,0,,,,,,,,,
+Models ranked by AICc(x) ,,,,,,,,,,,
+Random terms (all models): ,,,,,,,,,,,
+  cond(1 | location_site),,,,,,,,,,,

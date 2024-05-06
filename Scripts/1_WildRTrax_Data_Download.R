@@ -89,7 +89,7 @@ stopifnot(nrow(tag_data_tmp2)==(nrow(tag_data_tmp)-1076)) #stop if the new df is
 #BIO-TDN-052-06 filter out all images after 2022-08-17 16:57:50
 tag_data_tmp3<-filter(tag_data_tmp2,!((location == "BIO-TDN-052-06") & #filter by location
                                         (as_datetime(image_date_time)>as_datetime("2022-08-17 16:57:50")))) #filter out images taken after date/time
-stopifnot(nrow(tag_data_tmp3)==(nrow(tag_data_tmp2)-631)) #stop if the new df isn't smaller by the correct number of tags
+stopifnot(nrow(tag_data_tmp3)==(nrow(tag_data_tmp2)-857)) #stop if the new df isn't smaller by the correct number of tags
 
 #BIO-TDN-052-07 filter out all images after 2022-08-17 16:55:08
 tag_data_tmp4<-filter(tag_data_tmp3,!((location == "BIO-TDN-052-07") & #filter by location
@@ -122,7 +122,7 @@ unique(tag_data$image_fov) #check fov values
 tag_data_filter <- tag_data %>% filter(!image_fov == "Out of Range") #filter out "Out of Range" 
 unique(tag_data_filter$image_fov) #check fov values after the filter
 
-#1887414 tags including extra sites/deployments
+#1887640 tags including extra sites/deployments
 #1811617 tags wout extra sites/deployments
 #1559715 tags wout "Out of Range"
 #251903 tags "Out of Range"
@@ -274,7 +274,7 @@ cam_summaries_biweek <- filtered_cam_summaries_day %>%
   mutate(biweek = ceiling(week(day) / 2)) %>%  # Divide weeks by 2 to create two-week intervals
   relocate(biweek, .after = year) %>%
   group_by(location, year, biweek) %>%
-  summarise(across(`n_days_effort`:`Yellow.rumped.Warbler`, sum))
+  summarise(across(`n_days_effort`:`Yellow-rumped Warbler`, sum))
 
 ## 4.3 Write csv ####
 
@@ -384,29 +384,29 @@ write.csv(cam_summaries_full_focal, paste0(project,"_cam_summaries_full_focal.cs
 write.csv(cam_summaries_biweek_focal, paste0(project,"_cam_summaries_biweek_focal.csv"), row.names = F)
 
 ## 5.5 Cluster Summary ####
-#create total camera summary by site for focal species
+#create total camera summary by site for all species
 
 #read in csv with camera and cluster names
 site_locations<-read.csv("Raw_Data/TDN_camera_site_locations.csv")
 
 #join to cam_summaries_full_focal
-site_summaries_full_focal_tmp<- left_join(cam_summaries_full_focal, site_locations, by = "location")
+site_summaries_full_tmp<- left_join(cam_summaries_full, site_locations, by = "location")
 
 #reorder columns
-site_summaries_full_focal_tmp<-site_summaries_full_focal_tmp %>% 
+site_summaries_full_tmp<-site_summaries_full_tmp %>% 
   select(location,latitude,longitude,location_site,latitude_site,longitude_site,everything())
 
 #remove camera names and locations
-site_summaries_full_focal<- site_summaries_full_focal_tmp %>%
+site_summaries_full<- site_summaries_full_tmp %>%
   select(-location, -latitude, -longitude)
 
 #group detections by camera cluster/site
-site_summaries_full_focal <-  site_summaries_full_focal |>
+site_summaries_full <-  site_summaries_full |>
   group_by(location_site,latitude_site,longitude_site) |>
-  summarise(across(`n_days_effort`:`Wolverine`, sum))
+  summarise(across(`n_days_effort`:`Yellow-rumped Warbler`, sum))
 
 #write csv
-write.csv(site_summaries_full_focal, paste0(project,"_clust_summaries_full_focal.csv"), row.names = F)
+write.csv(site_summaries_full, paste0(project,"_clust_summaries_full.csv"), row.names = F)
 
 # 6. Mammals only ####
 
@@ -501,3 +501,4 @@ write.csv(cam_summaries_full_mam, paste0(project,"_cam_summaries_full_mam.csv"),
 
 #biweekly summary focal
 write.csv(cam_summaries_biweek_mam, paste0(project,"_cam_summaries_biweek_mam.csv"), row.names = F)
+

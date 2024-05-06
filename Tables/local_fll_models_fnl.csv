@@ -1,0 +1,35 @@
+x,,,,,,,,,,
+Model selection table ,,,,,,,,,,
+                                cnd((Int)) dsp((Int)) cnd(off(log(n_dys_eff))) cnd(z.esk_dst_m) cnd(z.men_elv_300) cnd(z.men_tri_300) cnd(z.X30_BAR),,,,,,,,,,
+glmm_wk_cbou_fll_comm_bu            -4.460          +                        +           -1.360             0.3419             -1.191        -0.1650,,,,,,,,,,
+glmm_wk_cbou_fll_comm_bu_tgt        -4.594          +                        +           -1.259             0.5387             -1.357        -0.1657,,,,,,,,,,
+glmm_wk_cbou_fall_null              -2.206          +                        +                                                                      ,,,,,,,,,,
+glmm_wk_cbou_fll_comm_td            -2.206          +                        +                                                                      ,,,,,,,,,,
+glmm_wk_cbou_fll_comm_app_3         -2.206          +                        +                                                                      ,,,,,,,,,,
+glmm_wk_cbou_fll_comm_app_2         -2.230          +                        +                                                                      ,,,,,,,,,,
+glmm_wk_cbou_fll_comm_td_tgt        -2.158          +                        +                                                                      ,,,,,,,,,,
+glmm_wk_cbou_fll_comm_app_3_tgt     -2.158          +                        +                                                                      ,,,,,,,,,,
+glmm_wk_cbou_fll_comm_app_2_tgt     -2.183          +                        +                                                                      ,,,,,,,,,,
+                                cnd(z.X30_MF) cnd(z.X30_SPP) cnd(z.X30_TSPG) cnd(z.X30_TSPN) cnd(z.X30_WAT) cnd(z.X30_WET) cnd(scl(Gry.Wlf)) cnd(trg_hyd),,,,,,,,,,
+glmm_wk_cbou_fll_comm_bu               0.3901        0.05352         -0.2975          -2.039       -0.05444        -0.4106                               ,,,,,,,,,,
+glmm_wk_cbou_fll_comm_bu_tgt           0.4043        0.07519         -0.2432          -2.025       -0.01479        -0.4130                              +,,,,,,,,,,
+glmm_wk_cbou_fall_null                                                                                                                                   ,,,,,,,,,,
+glmm_wk_cbou_fll_comm_td                                                                                                             0.03647             ,,,,,,,,,,
+glmm_wk_cbou_fll_comm_app_3                                                                                                                              ,,,,,,,,,,
+glmm_wk_cbou_fll_comm_app_2                                                                                                          0.03677             ,,,,,,,,,,
+glmm_wk_cbou_fll_comm_td_tgt                                                                                                         0.04433            +,,,,,,,,,,
+glmm_wk_cbou_fll_comm_app_3_tgt                                                                                                                         +,,,,,,,,,,
+glmm_wk_cbou_fll_comm_app_2_tgt                                                                                                      0.04455            +,,,,,,,,,,
+,cnd(trg_lnr),cnd(scl(Mos)),cnd(scl(Msk)),cnd(scl(Prd)),cnd(scl(Ung)),df,logLik,AICc,delta,weight
+glmm_wk_cbou_fll_comm_bu,,,,,,13,-1414.577,2855.5,0,0.922
+glmm_wk_cbou_fll_comm_bu_tgt,+,,,,,17,-1412.93,2860.5,4.95,0.077
+glmm_wk_cbou_fall_null,,,,,,3,-1434.262,2874.5,19.03,0
+glmm_wk_cbou_fll_comm_td,,,,,,4,-1434.034,2876.1,20.59,0
+glmm_wk_cbou_fll_comm_app_3,,,,0.03672,0.02838,5,-1433.966,2878,22.47,0
+glmm_wk_cbou_fll_comm_app_2,,-0.6148,0.03187,,,6,-1433.831,2879.7,24.23,0
+glmm_wk_cbou_fll_comm_td_tgt,+,,,,,8,-1432.624,2881.4,25.87,0
+glmm_wk_cbou_fll_comm_app_3_tgt,+,,,0.04453,0.02591,9,-1432.567,2883.3,27.79,0
+glmm_wk_cbou_fll_comm_app_2_tgt,+,-0.6097,0.02932,,,10,-1432.438,2885.1,29.58,0
+Models ranked by AICc(x) ,,,,,,,,,,
+Random terms (all models): ,,,,,,,,,,
+  cond(1 | location_site),,,,,,,,,,

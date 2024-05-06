@@ -1,0 +1,45 @@
+x,,,,,,,,,,
+Model selection table ,,,,,,,,,,
+                           cnd((Int)) dsp((Int)) cnd(off(log(n_dys_eff))) cnd(z.esk_dst_m) cnd(z.men_elv_300) cnd(z.men_tri_300) cnd(z.X30_BAR),,,,,,,,,,
+glmm_wk_spr_comm_bu            -19.04          +                        +         -0.01176             0.8340             0.4950        -0.1297,,,,,,,,,,
+glmm_wk_spr_comm_bu_tgt        -20.15          +                        +         -0.02199             0.9714             0.9828        -0.1172,,,,,,,,,,
+glmm_wk_spri_null              -10.72          +                        +                                                                      ,,,,,,,,,,
+glmm_wk_spr_comm_td            -11.45          +                        +                                                                      ,,,,,,,,,,
+glmm_wk_spr_comm_app_3         -11.17          +                        +                                                                      ,,,,,,,,,,
+glmm_wk_spr_comm_app_2         -11.19          +                        +                                                                      ,,,,,,,,,,
+glmm_wk_spr_comm_td_tgt        -11.46          +                        +                                                                      ,,,,,,,,,,
+glmm_wk_spr_comm_app_3_tgt     -11.77          +                        +                                                                      ,,,,,,,,,,
+glmm_wk_spr_comm_app_2_tgt     -12.27          +                        +                                                                      ,,,,,,,,,,
+                           cnd(z.X30_MF) cnd(z.X30_SPP) cnd(z.X30_TSPG) cnd(z.X30_TSPN) cnd(z.X30_TSPS) cnd(z.X30_WAT) cnd(z.X30_WET) cnd(scl(Gry.Wlf)),,,,,,,,,,
+glmm_wk_spr_comm_bu               -12.99        -0.5517          -3.097          -5.418         -0.2385        0.02753         0.4682                  ,,,,,,,,,,
+glmm_wk_spr_comm_bu_tgt           -13.95        -0.5658          -5.072          -4.335         -0.7504       -0.26180         0.4126                  ,,,,,,,,,,
+glmm_wk_spri_null                                                                                                                                      ,,,,,,,,,,
+glmm_wk_spr_comm_td                                                                                                                              -6.180,,,,,,,,,,
+glmm_wk_spr_comm_app_3                                                                                                                                 ,,,,,,,,,,
+glmm_wk_spr_comm_app_2                                                                                                                           -1.251,,,,,,,,,,
+glmm_wk_spr_comm_td_tgt                                                                                                                          -2.700,,,,,,,,,,
+glmm_wk_spr_comm_app_3_tgt                                                                                                                             ,,,,,,,,,,
+glmm_wk_spr_comm_app_2_tgt                                                                                                                       -6.102,,,,,,,,,,
+,cnd(scl(Grz.Ber)),cnd(trg_hyd),cnd(trg_lnr),cnd(scl(Mos)),cnd(scl(Msk)),cnd(scl(Prd)),cnd(scl(Ung)),cnd(Prd:Ung),df,logLik
+glmm_wk_spr_comm_bu,,,,,,,,,14,-261.364
+glmm_wk_spr_comm_bu_tgt,,+,+,,,,,,18,-258.295
+glmm_wk_spri_null,,,,,,,,,3,-280.86
+glmm_wk_spr_comm_td,-2.792,,,,,,,,5,-280.351
+glmm_wk_spr_comm_app_3,,,,,,-1.673,-2.301,-0.04088,6,-279.898
+glmm_wk_spr_comm_app_2,-0.873,,,-1.67,-1.916,,,,7,-279.898
+glmm_wk_spr_comm_td_tgt,-2.958,+,+,,,,,,9,-277.945
+glmm_wk_spr_comm_app_3_tgt,,+,+,,,-2.586,-3.316,0.04721,10,-277.529
+glmm_wk_spr_comm_app_2_tgt,-1.052,+,+,-2.025,-3.869,,,,11,-277.529
+,AICc,delta,weight,,,,,,,
+glmm_wk_spr_comm_bu,550.9,0,0.726,,,,,,,
+glmm_wk_spr_comm_bu_tgt,552.8,1.95,0.274,,,,,,,
+glmm_wk_spri_null,567.7,16.87,0,,,,,,,
+glmm_wk_spr_comm_td,570.7,19.86,0,,,,,,,
+glmm_wk_spr_comm_app_3,571.8,20.96,0,,,,,,,
+glmm_wk_spr_comm_app_2,573.8,22.97,0,,,,,,,
+glmm_wk_spr_comm_td_tgt,573.9,23.09,0,,,,,,,
+glmm_wk_spr_comm_app_3_tgt,575.1,24.27,0,,,,,,,
+glmm_wk_spr_comm_app_2_tgt,577.1,26.28,0,,,,,,,
+Models ranked by AICc(x) ,,,,,,,,,,
+Random terms (all models): ,,,,,,,,,,
+  cond(1 | location_site),,,,,,,,,,

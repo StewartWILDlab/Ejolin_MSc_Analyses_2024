@@ -1,0 +1,35 @@
+x,,,,,,,,,,,
+Model selection table ,,,,,,,,,,,
+                           cnd((Int)) dsp((Int)) cnd(off(log(n_dys_eff))) cnd(z.esk_dst_m) cnd(z.men_elv_300) cnd(z.men_tri_300) cnd(z.X30_BAR),,,,,,,,,,,
+glmm_wk_wtr_comm_bu            -8.631          +                        +           0.3114          -0.006586             1.0680         0.1456,,,,,,,,,,,
+glmm_wk_wtr_comm_bu_tgt        -8.601          +                        +           0.3177           0.083910             0.9791         0.1501,,,,,,,,,,,
+glmm_wk_wtr_comm_td            -7.483          +                        +                                                                      ,,,,,,,,,,,
+glmm_wk_wtr_comm_app_3         -7.678          +                        +                                                                      ,,,,,,,,,,,
+glmm_wk_wtr_null               -7.519          +                        +                                                                      ,,,,,,,,,,,
+glmm_wk_wtr_comm_app_2         -7.678          +                        +                                                                      ,,,,,,,,,,,
+glmm_wk_wtr_comm_td_tgt        -7.512          +                        +                                                                      ,,,,,,,,,,,
+glmm_wk_wtr_comm_app_3_tgt     -7.700          +                        +                                                                      ,,,,,,,,,,,
+glmm_wk_wtr_comm_app_2_tgt     -7.702          +                        +                                                                      ,,,,,,,,,,,
+                           cnd(z.X30_MF) cnd(z.X30_SPP) cnd(z.X30_TSPG) cnd(z.X30_TSPN) cnd(z.X30_TSPS) cnd(z.X30_WAT) cnd(z.X30_WET) cnd(scl(Gry.Wlf)),,,,,,,,,,,
+glmm_wk_wtr_comm_bu              0.17260       -0.08819          -3.261          -2.875          -3.710        -0.3082       -0.09491                  ,,,,,,,,,,,
+glmm_wk_wtr_comm_bu_tgt          0.06408       -0.05746          -3.114          -2.878          -3.472        -0.2196       -0.11780                  ,,,,,,,,,,,
+glmm_wk_wtr_comm_td                                                                                                                              0.1278,,,,,,,,,,,
+glmm_wk_wtr_comm_app_3                                                                                                                                 ,,,,,,,,,,,
+glmm_wk_wtr_null                                                                                                                                       ,,,,,,,,,,,
+glmm_wk_wtr_comm_app_2                                                                                                                           0.1278,,,,,,,,,,,
+glmm_wk_wtr_comm_td_tgt                                                                                                                          0.1217,,,,,,,,,,,
+glmm_wk_wtr_comm_app_3_tgt                                                                                                                             ,,,,,,,,,,,
+glmm_wk_wtr_comm_app_2_tgt                                                                                                                       0.1216,,,,,,,,,,,
+,cnd(trg_hyd),cnd(trg_lnr),cnd(scl(Mos)),cnd(scl(Msk)),cnd(scl(Prd)),cnd(scl(Ung)),df,logLik,AICc,delta,weight
+glmm_wk_wtr_comm_bu,,,,,,,14,-556.131,1140.4,0,0.966
+glmm_wk_wtr_comm_bu_tgt,+,+,,,,,18,-555.427,1147.1,6.68,0.034
+glmm_wk_wtr_comm_td,,,,,,,4,-586.458,1180.9,40.53,0
+glmm_wk_wtr_comm_app_3,,,,,0.1278,-2.717,5,-586.174,1182.4,41.97,0
+glmm_wk_wtr_null,,,,,,,3,-589.146,1184.3,43.9,0
+glmm_wk_wtr_comm_app_2,,,-1.697,-2.161,,,6,-586.174,1184.4,43.98,0
+glmm_wk_wtr_comm_td_tgt,+,+,,,,,8,-585.976,1188,47.6,0
+glmm_wk_wtr_comm_app_3_tgt,+,+,,,0.1216,-2.638,9,-585.692,1189.4,49.04,0
+glmm_wk_wtr_comm_app_2_tgt,+,+,-1.729,-2.046,,,10,-585.692,1191.5,51.06,0
+Models ranked by AICc(x) ,,,,,,,,,,,
+Random terms (all models): ,,,,,,,,,,,
+  cond(1 | location_site),,,,,,,,,,,

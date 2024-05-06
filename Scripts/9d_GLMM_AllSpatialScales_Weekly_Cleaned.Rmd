@@ -12,12 +12,14 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 # Check you have them and load them
-list.of.packages <- c("kableExtra", "tidyr", "ggplot2", "gridExtra", "dplyr", "Hmsc", "jtools", "lubridate", "corrplot", "MuMIn","stringr","sf","raster","leaflet", "tidyverse","htmlwidgets","webshot", "purrr", "magick","forcats","multcomp", "reshape2", "lme4", "tidyr", "TMB", "glmmTMB")
+list.of.packages <- c("kableExtra", "tidyr", "ggplot2", "gridExtra", "dplyr", "Hmsc", "jtools", "lubridate", "corrplot", "MuMIn","stringr","sf","raster","leaflet", "tidyverse","htmlwidgets","webshot", "purrr", "magick","forcats","multcomp", "reshape2", "lme4", "tidyr", "TMB", "glmmTMB", "car")
 
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages)
 lapply(list.of.packages, require, character.only = TRUE)
 ```
+
+Landcovers are proportions and therefore don't need to be scaled as they are already between 1 and 0. topography and non-response variable species detections still need to be scaled. 
 
 # 1. Region, Multiseason detections
 ```{r}
@@ -34,6 +36,17 @@ levels(mod_dat_wk$target_cons)
 levels(mod_dat_wk$target_hydro)
 levels(mod_dat_wk$target_linear)
 ```
+
+##VIF testing
+
+The smallest possible value of VIF is one (absence of multicollinearity). As a rule of thumb, a VIF value that exceeds 5 or 10 indicates a problematic amount of collinearity (James et al. 2014). Removing the dominant landcover (SPPSLM) brings VIF down to about 1 for other landcovers in every single seasonal and spatial data set.
+
+```{r}
+model1<- glm(Caribou ~ z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_TSPS + z.X300_BAR, data=mod_dat_wk, family = "poisson")
+
+vif(model1)
+```
+
 
 ##Simple Models
 let's run a couple super simple models, one with a random effect and one with the survey effort offset and no extra covariates:
@@ -162,7 +175,7 @@ summary(glmm_wk_tgt_l)
 ### Ungulates
 ```{r}
 glmm_wk_ung <- glmmTMB(Caribou ~ 
-                    Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    scale(Muskox) + scale(Moose) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
 summary(glmm_wk_ung)
@@ -180,10 +193,10 @@ SAME AS COMMITTEE TOP DOWN MODEL
 
 ### Ung + Predators
 ```{r}
-glmm_wk_ungpred <- glmmTMB(Caribou ~ 
-                    Gray.Wolf + Grizzly.Bear + Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+#glmm_wk_ungpred <- glmmTMB(Caribou ~ 
+#                    scale(Gray.Wolf) + scale(Grizzly.Bear) + scale(Muskox) + scale(Moose) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
 
-summary(glmm_wk_ungpred)
+#summary(glmm_wk_ungpred)
 ```
 
 ############################################################################################
@@ -192,10 +205,14 @@ summary(glmm_wk_ungpred)
 
 #### Bottom Up
 
+#####NOTE: Completely misinterepreted model outputs for the bottom up models. Can't include every landcover because they're proportions and essentially add up to 1 (very high multicollinearity). The intercept essentially rperesents the model if the landcovers not included were set to one (i.e. a buffer of 100% the landcovers not inclded in the model) and the effects of the landcovers in the model are being compared against this. The direction (+/-) remains the same but the exponential of the estimate is used to show magnitude of effect (e.g. if the exp(estimate) of the BAR landclass is 0.9, then there is a 10% decrease in caribou detections relative to the omitted landcovers which would be represented by 1.0).Omitting SPPSLM as it is the dominant landcover type captured within buffer areas. At the regional scale I would expect very strong negative effects of taiga-type landcovers and weaker negative effects at the local scale. May see positive effects of other landcover types or small landcovers at the local scale. 
+
+At the regional scale, SPTNF and TSPBDF account for under 1% of all the land captured within the buffered areas and were omitted as well. 
+
 wout target
 ```{r}
 glmm_wk_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_comm_bu)
 ```
@@ -203,7 +220,7 @@ summary(glmm_wk_comm_bu)
 wtarget
 ```{r}
 glmm_wk_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_comm_bu_tgt)
 ```
@@ -214,7 +231,7 @@ summary(glmm_wk_comm_bu_tgt)
 wout target
 ```{r}
 glmm_wk_comm_td <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_comm_td)
 ```
@@ -222,7 +239,7 @@ summary(glmm_wk_comm_td)
 w target
 ```{r}
 glmm_wk_comm_td_tgt <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + target_hydro + target_linear  + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear  + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_comm_td_tgt)
 ```
@@ -232,7 +249,7 @@ summary(glmm_wk_comm_td_tgt)
 w target
 ```{r}
 glmm_wk_comm_app_tgt <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_comm_app_tgt)
 ```
@@ -240,30 +257,70 @@ summary(glmm_wk_comm_app_tgt)
 wout target
 ```{r}
 glmm_wk_comm_app <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_comm_app)
 ```
 
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_comm_app_3_tgt)
+```
+
 ###Committee Model Selection
 ```{r}
-model.sel(glmm_wk_random_eff, glmm_wk_wk, glmm_wk_fourssn, glmm_wk_tgt, glmm_wk_tgt_h, glmm_wk_tgt_l, glmm_wk_comm_bu, glmm_wk_comm_td, glmm_wk_comm_app, glmm_wk_comm_bu_tgt, glmm_wk_comm_td_tgt, glmm_wk_comm_app_tgt)
+model.sel(glmm_wk_random_eff, glmm_wk_wk, glmm_wk_tgt, glmm_wk_tgt_h, glmm_wk_tgt_l, glmm_wk_comm_bu, glmm_wk_comm_td, glmm_wk_comm_app, glmm_wk_comm_bu_tgt, glmm_wk_comm_td_tgt, glmm_wk_comm_app_tgt, glmm_wk_comm_app_2, glmm_wk_comm_app_2_tgt, glmm_wk_comm_app_3, glmm_wk_comm_app_3_tgt)
 ```
 
 #############################################################################################
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_random_eff, glmm_wk_fourssn, glmm_wk_wk, glmm_wk_lcc_2, glmm_wk_dem, glmm_wk_tgt_h, glmm_wk_tgt_l, glmm_wk_ung, glmm_wk_ungpred, glmm_wk_comm_bu, glmm_wk_comm_td, glmm_wk_comm_app, glmm_wk_esker, glmm_wk_comm_bu_tgt, glmm_wk_comm_td_tgt, glmm_wk_comm_app_tgt)
+model.sel(glmm_wk_random_eff, glmm_wk_wk, glmm_wk_lcc_2, glmm_wk_dem, glmm_wk_tgt_h, glmm_wk_tgt_l, glmm_wk_ung, glmm_wk_comm_bu, glmm_wk_comm_td, glmm_wk_esker, glmm_wk_comm_bu_tgt, glmm_wk_comm_td_tgt, glmm_wk_comm_app_2, glmm_wk_comm_app_2_tgt, glmm_wk_comm_app_3, glmm_wk_comm_app_3_tgt)
 ```
 
 ###Save Model Selection
 ```{r}
 # Capture the model selection
-#summary_output <- capture.output(model.sel(glmm_wk_random_eff, glmm_wk_fourssn, glmm_wk_wk, glmm_wk_lcc_2, glmm_wk_dem, glmm_wk_tgt_h, glmm_wk_tgt_l, glmm_wk_ung, glmm_wk_ungpred, glmm_wk_comm_bu, glmm_wk_comm_td, glmm_wk_comm_app, glmm_wk_esker, glmm_wk_comm_bu_tgt, glmm_wk_comm_td_tgt, glmm_wk_comm_app_tgt))
+#summary_output <- capture.output(model.sel(glmm_wk_random_eff, glmm_wk_wk, glmm_wk_comm_bu, glmm_wk_comm_td, glmm_wk_comm_bu_tgt, glmm_wk_comm_td_tgt, glmm_wk_comm_app_2, glmm_wk_comm_app_2_tgt, glmm_wk_comm_app_3, glmm_wk_comm_app_3_tgt))
 
 # Save the model selection to a CSV file
-#write.csv(summary_output, file = "Tables/region_multi_models.csv", row.names = FALSE)
+#write.csv(summary_output, file = "Tables/region_multi_models_fnl.csv", row.names = FALSE)
 ```
 
 ###Save Top Model
@@ -386,7 +443,7 @@ summary(glmm_wk_smr_tgt_l)
 How do those other ungulates effect caribou habitat use? 
 ```{r}
 glmm_wk_smr_ung <- glmmTMB(Caribou ~ 
-                    Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    scale(Muskox) + scale(Moose) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
 summary(glmm_wk_smr_ung)
@@ -399,16 +456,6 @@ summary(glmm_wk_smr_ung)
 
 
 #summary(glmm_wk_smr_pred)
-```
-
-
-### Ung + Predators
-```{r}
-glmm_wk_smr_ungpred <- glmmTMB(Caribou ~ 
-                    Gray.Wolf + Grizzly.Bear + Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
-
-
-summary(glmm_wk_smr_ungpred)
 ```
 
 ###########################################################################################
@@ -465,10 +512,13 @@ Compare with the model above. If wolf and griz have a strong effect here but ung
 ## Committee Models
 
 #### Bottom Up
+
+#####NOTE: Removed TSPS due to very large standard errors. Removal resulted in normal values across remaining landcovers.
+
 wo tgt
 ```{r}
 glmm_wk_smr_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_smr_comm_bu)
 ```
@@ -476,7 +526,7 @@ summary(glmm_wk_smr_comm_bu)
 w tgt
 ```{r}
 glmm_wk_smr_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_smr_comm_bu_tgt)
 ```
@@ -485,7 +535,7 @@ summary(glmm_wk_smr_comm_bu_tgt)
 wo tgt
 ```{r}
 glmm_wk_smr_comm_td <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_smr_comm_td)
 ```
@@ -493,7 +543,7 @@ summary(glmm_wk_smr_comm_td)
 w tgt
 ```{r}
 glmm_wk_smr_comm_td_tgt <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_smr_comm_td_tgt)
 ```
@@ -502,7 +552,7 @@ summary(glmm_wk_smr_comm_td_tgt)
 wo tgt
 ```{r}
 glmm_wk_smr_comm_app <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_smr_comm_app)
 ```
@@ -510,30 +560,70 @@ summary(glmm_wk_smr_comm_app)
 w tgt
 ```{r}
 glmm_wk_smr_comm_app_tgt <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_smr_comm_app_tgt)
 ```
 
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_smr_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_smr_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_smr_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_smr_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_smr_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_smr_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_smr_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_smr_comm_app_3_tgt)
+```
+
 ####Committee Model Selection
 ```{r}
-model.sel(glmm_wk_smr_wk, glmm_wk_smr_null, glmm_wk_smr_tgt_h, glmm_wk_smr_tgt_l, glmm_wk_smr_comm_bu, glmm_wk_smr_comm_td, glmm_wk_smr_comm_app, glmm_wk_smr_comm_bu_tgt, glmm_wk_smr_comm_td_tgt, glmm_wk_smr_comm_app_tgt)
+model.sel(glmm_wk_smr_wk, glmm_wk_smr_null, glmm_wk_smr_tgt_h, glmm_wk_smr_tgt_l, glmm_wk_smr_comm_bu, glmm_wk_smr_comm_td, glmm_wk_smr_comm_app, glmm_wk_smr_comm_bu_tgt, glmm_wk_smr_comm_td_tgt, glmm_wk_smr_comm_app_tgt, glmm_wk_smr_comm_app_2, glmm_wk_smr_comm_app_2_tgt, glmm_wk_smr_comm_app_3, glmm_wk_smr_comm_app_3_tgt)
 ```
 
 #############################################################################################
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_smr_null, glmm_wk_smr_wk, glmm_wk_smr_lcc_2, glmm_wk_smr_dem, glmm_wk_smr_tgt_h, glmm_wk_smr_tgt_l, glmm_wk_smr_ung, glmm_wk_smr_ungpred, glmm_wk_smr_comm_bu, glmm_wk_smr_comm_td, glmm_wk_smr_comm_app, glmm_wk_smr_esker, glmm_wk_smr_comm_bu_tgt, glmm_wk_smr_comm_td_tgt, glmm_wk_smr_comm_app_tgt)
+model.sel(glmm_wk_smr_null, glmm_wk_smr_wk, glmm_wk_smr_lcc_2, glmm_wk_smr_dem, glmm_wk_smr_tgt_h, glmm_wk_smr_tgt_l, glmm_wk_smr_ung, glmm_wk_smr_comm_bu, glmm_wk_smr_comm_td, glmm_wk_smr_comm_app, glmm_wk_smr_esker, glmm_wk_smr_comm_bu_tgt, glmm_wk_smr_comm_td_tgt, glmm_wk_smr_comm_app_tgt)
 ```
 
 ###Save Model Selection
 ```{r}
 # Capture the model selection
-#summary_output <- capture.output(model.sel(glmm_wk_smr_null, glmm_wk_smr_wk, glmm_wk_smr_lcc_2, glmm_wk_smr_dem, glmm_wk_smr_tgt_h, glmm_wk_smr_tgt_l, glmm_wk_smr_ung, glmm_wk_smr_ungpred, glmm_wk_smr_comm_bu, glmm_wk_smr_comm_td, glmm_wk_smr_comm_app, glmm_wk_smr_esker, glmm_wk_smr_comm_bu_tgt, glmm_wk_smr_comm_td_tgt, glmm_wk_smr_comm_app_tgt))
+#summary_output <- capture.output(model.sel(glmm_wk_smr_null, glmm_wk_smr_comm_bu, glmm_wk_smr_comm_td, glmm_wk_smr_comm_bu_tgt, glmm_wk_smr_comm_td_tgt, glmm_wk_smr_comm_app_2, glmm_wk_smr_comm_app_2_tgt, glmm_wk_smr_comm_app_3, glmm_wk_smr_comm_app_3_tgt))
 
 # Save the model selection to a CSV file
-#write.csv(summary_output, file = "Tables/region_smr_models.csv", row.names = FALSE)
+#write.csv(summary_output, file = "Tables/region_smr_models_fnl.csv", row.names = FALSE)
 ```
 
 ###Save Top Model
@@ -671,11 +761,11 @@ summary(glmm_wk_fall_ung)
 
 ### Ung + Predators
 ```{r}
-glmm_wk_fall_ungpred <- glmmTMB(Caribou ~ 
-                    Gray.Wolf + Grizzly.Bear + Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+#glmm_wk_fall_ungpred <- glmmTMB(Caribou ~ 
+#                    Gray.Wolf + Grizzly.Bear + Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
-summary(glmm_wk_fall_ungpred)
+#summary(glmm_wk_fall_ungpred)
 ```
 
 #############################################################################################
@@ -732,7 +822,7 @@ Compare with the model above. If wolf and griz have a strong effect here but ung
 wo target
 ```{r}
 glmm_wk_fll_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_fll_comm_bu)
 ```
@@ -740,7 +830,7 @@ summary(glmm_wk_fll_comm_bu)
 target
 ```{r}
 glmm_wk_fll_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_fll_comm_bu_tgt)
 ```
@@ -749,7 +839,7 @@ summary(glmm_wk_fll_comm_bu_tgt)
 wo target
 ```{r}
 glmm_wk_fll_comm_td <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_fll_comm_td)
 ```
@@ -757,7 +847,7 @@ summary(glmm_wk_fll_comm_td)
 w target
 ```{r}
 glmm_wk_fll_comm_td_tgt <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_fll_comm_td_tgt)
 ```
@@ -766,7 +856,7 @@ summary(glmm_wk_fll_comm_td_tgt)
 wo target
 ```{r}
 glmm_wk_fll_comm_app <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_fll_comm_app)
 ```
@@ -774,30 +864,71 @@ summary(glmm_wk_fll_comm_app)
 w target
 ```{r}
 glmm_wk_fll_comm_app_tgt <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_fll_comm_app_tgt)
 ```
 
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_fall_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fall_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_fall_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fall_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_fall_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fall_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_fall_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fall_comm_app_3_tgt)
+```
+
+
 ####Committee Model Selection
 ```{r}
-model.sel(glmm_wk_fall_wk, glmm_wk_fall_null, glmm_wk_fall_tgt_h, glmm_wk_fall_tgt_l, glmm_wk_fll_comm_bu, glmm_wk_fll_comm_td, glmm_wk_fll_comm_app, glmm_wk_fll_comm_bu_tgt, glmm_wk_fll_comm_td_tgt, glmm_wk_fll_comm_app_tgt)
+model.sel(glmm_wk_fall_wk, glmm_wk_fall_null, glmm_wk_fall_tgt_h, glmm_wk_fall_tgt_l, glmm_wk_fll_comm_bu, glmm_wk_fll_comm_td, glmm_wk_fll_comm_app, glmm_wk_fll_comm_bu_tgt, glmm_wk_fll_comm_td_tgt, glmm_wk_fll_comm_app_tgt, glmm_wk_fall_comm_app_2_tgt, glmm_wk_fall_comm_app_2, glmm_wk_fall_comm_app_3, glmm_wk_fall_comm_app_3_tgt)
 ```
 
 #############################################################################################
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_fall_null, glmm_wk_fall_wk, glmm_wk_fall_lcc_2, glmm_wk_fall_dem, glmm_wk_fall_tgt_h, glmm_wk_fall_tgt_l, glmm_wk_fall_ung, glmm_wk_fall_ungpred, glmm_wk_fll_comm_bu, glmm_wk_fll_comm_td, glmm_wk_fll_comm_app, glmm_wk_fll_comm_bu_tgt, glmm_wk_fll_comm_td_tgt, glmm_wk_fll_comm_app_tgt, glmm_wk_fall_esker)
+model.sel(glmm_wk_fall_null, glmm_wk_fall_wk, glmm_wk_fall_lcc_2, glmm_wk_fall_dem, glmm_wk_fall_tgt_h, glmm_wk_fall_tgt_l, glmm_wk_fall_ung, glmm_wk_fll_comm_bu, glmm_wk_fll_comm_td, glmm_wk_fll_comm_app, glmm_wk_fll_comm_bu_tgt, glmm_wk_fll_comm_td_tgt, glmm_wk_fll_comm_app_tgt, glmm_wk_fall_esker, glmm_wk_fall_comm_app_2_tgt, glmm_wk_fall_comm_app_2, glmm_wk_fall_comm_app_3, glmm_wk_fall_comm_app_3_tgt)
 ```
 
 ###Save Model Selection
 ```{r}
 # Capture the model selection
-#summary_output <- capture.output(model.sel(glmm_wk_fall_null, glmm_wk_fall_wk, glmm_wk_fall_lcc_2, glmm_wk_fall_dem, glmm_wk_fall_tgt_h, glmm_wk_fall_tgt_l, glmm_wk_fall_ung, glmm_wk_fall_ungpred, glmm_wk_fll_comm_bu, glmm_wk_fll_comm_td, glmm_wk_fll_comm_app, glmm_wk_fll_comm_bu_tgt, glmm_wk_fll_comm_td_tgt, glmm_wk_fll_comm_app_tgt, glmm_wk_fall_esker))
+#summary_output <- capture.output(model.sel(glmm_wk_fall_null, glmm_wk_fll_comm_bu, glmm_wk_fll_comm_td, glmm_wk_fll_comm_bu_tgt, glmm_wk_fll_comm_td_tgt, glmm_wk_fall_comm_app_2_tgt, glmm_wk_fall_comm_app_2, glmm_wk_fall_comm_app_3, glmm_wk_fall_comm_app_3_tgt))
 
 # Save the model selection to a CSV file
-#write.csv(summary_output, file = "Tables/region_fll_models.csv", row.names = FALSE)
+#write.csv(summary_output, file = "Tables/region_fll_models_fnl.csv", row.names = FALSE)
 ```
 
 ###Save Top Model
@@ -918,7 +1049,7 @@ summary(glmm_wk_wtr_tgt_l)
 ### Ungulates
 ```{r}
 glmm_wk_wtr_ung <- glmmTMB(Caribou ~ 
-                    Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    scale(Muskox) + scale(Moose) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
 summary(glmm_wk_wtr_ung)
@@ -935,11 +1066,11 @@ summary(glmm_wk_wtr_ung)
 
 ### Ungulates + Pred
 ```{r}
-glmm_wk_wtr_ungpred <- glmmTMB(Caribou ~ 
-                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+#glmm_wk_wtr_ungpred <- glmmTMB(Caribou ~ 
+#                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
-summary(glmm_wk_wtr_ungpred)
+#summary(glmm_wk_wtr_ungpred)
 ```
 
 
@@ -992,13 +1123,11 @@ Compare with the model above. If wolf and griz have a strong effect here but ung
 
 ## Committee Models
 
-Uber simple models that the committee wants run on every data set and in every season
-
 #### Bottom Up
 wo target
 ```{r}
 glmm_wk_wtr_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_wtr_comm_bu)
 ```
@@ -1006,7 +1135,7 @@ summary(glmm_wk_wtr_comm_bu)
 w target
 ```{r}
 glmm_wk_wtr_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_wtr_comm_bu_tgt)
 ```
@@ -1015,7 +1144,7 @@ summary(glmm_wk_wtr_comm_bu_tgt)
 wo target
 ```{r}
 glmm_wk_wtr_comm_td <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_wtr_comm_td)
 ```
@@ -1023,7 +1152,7 @@ summary(glmm_wk_wtr_comm_td)
 w target
 ```{r}
 glmm_wk_wtr_comm_td_tgt <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_wtr_comm_td_tgt)
 ```
@@ -1032,7 +1161,7 @@ summary(glmm_wk_wtr_comm_td_tgt)
 wo target
 ```{r}
 glmm_wk_wtr_comm_app <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_wtr_comm_app)
 ```
@@ -1040,39 +1169,80 @@ summary(glmm_wk_wtr_comm_app)
 w target
 ```{r}
 glmm_wk_wtr_comm_app_tgt <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_wtr_comm_app_tgt)
 ```
 
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_wtr_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wtr_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_wtr_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wtr_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_wtr_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wtr_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_wtr_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wtr_comm_app_3_tgt)
+```
+
+
 ####Committee Model Selection
 ```{r}
-model.sel(glmm_wk_wtr_null, glmm_wk_wtr_tgt_l, glmm_wk_wtr_tgt_h, glmm_wk_wtr_comm_bu, glmm_wk_wtr_comm_td, glmm_wk_wtr_comm_app, glmm_wk_wtr_comm_bu_tgt, glmm_wk_wtr_comm_td_tgt, glmm_wk_wtr_comm_app_tgt)
+model.sel(glmm_wk_wtr_null, glmm_wk_wtr_tgt_l, glmm_wk_wtr_tgt_h, glmm_wk_wtr_comm_bu, glmm_wk_wtr_comm_td, glmm_wk_wtr_comm_app, glmm_wk_wtr_comm_bu_tgt, glmm_wk_wtr_comm_td_tgt, glmm_wk_wtr_comm_app_tgt, glmm_wk_wtr_comm_app_2, glmm_wk_wtr_comm_app_2_tgt, glmm_wk_wtr_comm_app_3, glmm_wk_wtr_comm_app_3_tgt)
 ```
 
 #############################################################################################
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_wtr_null, glmm_wk_wtr_wk, glmm_wk_wtr_lcc_2, glmm_wk_wtr_dem, glmm_wk_wtr_tgt_l, glmm_wk_wtr_tgt_h, glmm_wk_wtr_ung, glmm_wk_wtr_ungpred, glmm_wk_wtr_comm_bu, glmm_wk_wtr_comm_td, glmm_wk_wtr_comm_app, glmm_wk_wtr_comm_bu_tgt, glmm_wk_wtr_comm_td_tgt, glmm_wk_wtr_comm_app_tgt, glmm_wk_wtr_esker)
+model.sel(glmm_wk_wtr_null, glmm_wk_wtr_wk, glmm_wk_wtr_lcc_2, glmm_wk_wtr_dem, glmm_wk_wtr_tgt_l, glmm_wk_wtr_tgt_h, glmm_wk_wtr_ung, glmm_wk_wtr_comm_bu, glmm_wk_wtr_comm_td, glmm_wk_wtr_comm_app, glmm_wk_wtr_comm_bu_tgt, glmm_wk_wtr_comm_td_tgt, glmm_wk_wtr_comm_app_tgt, glmm_wk_wtr_esker, glmm_wk_wtr_comm_app_2, glmm_wk_wtr_comm_app_2_tgt, glmm_wk_wtr_comm_app_3, glmm_wk_wtr_comm_app_3_tgt)
 ```
 
 ###Save Model Selection
 ```{r}
 # Capture the model selection
-#summary_output <- capture.output(model.sel(glmm_wk_wtr_null, glmm_wk_wtr_lcc_2, glmm_wk_wtr_dem, glmm_wk_wtr_tgt_l, glmm_wk_wtr_tgt_h, glmm_wk_wtr_ung, glmm_wk_wtr_ungpred, glmm_wk_wtr_comm_bu, glmm_wk_wtr_comm_td, glmm_wk_wtr_comm_app, glmm_wk_wtr_comm_bu_tgt, glmm_wk_wtr_comm_td_tgt, glmm_wk_wtr_comm_app_tgt, glmm_wk_wtr_esker))
+#summary_output <- capture.output(model.sel(glmm_wk_wtr_null, glmm_wk_wtr_comm_bu, glmm_wk_wtr_comm_td, glmm_wk_wtr_comm_bu_tgt, glmm_wk_wtr_comm_td_tgt, glmm_wk_wtr_comm_app_2, glmm_wk_wtr_comm_app_2_tgt, glmm_wk_wtr_comm_app_3, glmm_wk_wtr_comm_app_3_tgt))
 
 # Save the model selection to a CSV file
-#write.csv(summary_output, file = "Tables/region_wtr_models.csv", row.names = FALSE)
+#write.csv(summary_output, file = "Tables/region_wtr_models_fnl.csv", row.names = FALSE)
 ```
 
 ###Save Top Model
 ```{r}
 # Capture the summary output
-#summary_output <- capture.output(summary(glmm_wk_wtr_lcc_2))
+#summary_output <- capture.output(summary(glmm_wk_wtr_comm_bu))
 
 # Save the summary data to a CSV file
-#write.csv(summary_output, file = "Tables/region_wtr_lcc_2.csv", row.names = FALSE)
+#write.csv(summary_output, file = "Tables/region_wtr_bu.csv", row.names = FALSE)
 ```
 
 ############################################################################################################################################################################################################################
@@ -1182,7 +1352,7 @@ summary(glmm_wk_spri_tgt_l)
 ### Ungulates
 ```{r}
 glmm_wk_spri_ung <- glmmTMB(Caribou ~ 
-                    Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    scale(Muskox) + scale(Moose) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
 summary(glmm_wk_spri_ung)
@@ -1199,11 +1369,11 @@ summary(glmm_wk_spri_ung)
 
 ### Ungulates + Pred
 ```{r}
-glmm_wk_spri_ungpred <- glmmTMB(Caribou ~ 
-                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+#glmm_wk_spri_ungpred <- glmmTMB(Caribou ~ 
+#                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
-summary(glmm_wk_spri_ungpred)
+#summary(glmm_wk_spri_ungpred)
 ```
 
 #############################################################################################
@@ -1261,7 +1431,7 @@ Uber simple models that the committee wants run on every data set and in every s
 wo target
 ```{r}
 glmm_wk_spr_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_spr_comm_bu)
 ```
@@ -1269,7 +1439,7 @@ summary(glmm_wk_spr_comm_bu)
 wtarget
 ```{r}
 glmm_wk_spr_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_spr_comm_bu_tgt)
 ```
@@ -1278,7 +1448,7 @@ summary(glmm_wk_spr_comm_bu_tgt)
 wo target
 ```{r}
 glmm_wk_spr_comm_td <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_spr_comm_td)
 ```
@@ -1286,7 +1456,7 @@ summary(glmm_wk_spr_comm_td)
 wtarget
 ```{r}
 glmm_wk_spr_comm_td_tgt <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_spr_comm_td_tgt)
 ```
@@ -1295,7 +1465,7 @@ summary(glmm_wk_spr_comm_td_tgt)
 wo target
 ```{r}
 glmm_wk_spr_comm_app <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_spr_comm_app)
 ```
@@ -1303,14 +1473,56 @@ summary(glmm_wk_spr_comm_app)
 wtarget
 ```{r}
 glmm_wk_spr_comm_app_tgt <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_spr_comm_app_tgt)
 ```
 
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_spr_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_spr_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_spr_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_spr_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_spr_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_spr_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_spr_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_spr_comm_app_3_tgt)
+```
+
+
+
 ####Committee Model Selection
 ```{r}
-model.sel(glmm_wk_spri_null, glmm_wk_spri_tgt_h, glmm_wk_spri_tgt_l, glmm_wk_spr_comm_bu, glmm_wk_spr_comm_td, glmm_wk_spr_comm_app, glmm_wk_spr_comm_bu_tgt, glmm_wk_spr_comm_td_tgt, glmm_wk_spr_comm_app_tgt)
+model.sel(glmm_wk_spri_null, glmm_wk_spri_tgt_h, glmm_wk_spri_tgt_l, glmm_wk_spr_comm_bu, glmm_wk_spr_comm_td, glmm_wk_spr_comm_app, glmm_wk_spr_comm_bu_tgt, glmm_wk_spr_comm_td_tgt, glmm_wk_spr_comm_app_tgt, glmm_wk_spr_comm_app_2, glmm_wk_spr_comm_app_2_tgt, glmm_wk_spr_comm_app_3, glmm_wk_spr_comm_app_3_tgt)
 ```
 
 
@@ -1318,25 +1530,25 @@ model.sel(glmm_wk_spri_null, glmm_wk_spri_tgt_h, glmm_wk_spri_tgt_l, glmm_wk_spr
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_spri_null, glmm_wk_spri_wk, glmm_wk_spri_lcc_2, glmm_wk_spri_dem, glmm_wk_spri_tgt_h, glmm_wk_spri_tgt_l, glmm_wk_spri_ung, glmm_wk_spri_ungpred, glmm_wk_spr_comm_bu, glmm_wk_spr_comm_td, glmm_wk_spr_comm_app, glmm_wk_spri_esker, glmm_wk_spr_comm_bu_tgt, glmm_wk_spr_comm_td_tgt, glmm_wk_spr_comm_app_tgt)
+model.sel(glmm_wk_spri_null, glmm_wk_spri_wk, glmm_wk_spri_lcc_2, glmm_wk_spri_dem, glmm_wk_spri_tgt_h, glmm_wk_spri_tgt_l, glmm_wk_spri_ung, glmm_wk_spr_comm_bu, glmm_wk_spr_comm_td, glmm_wk_spr_comm_app, glmm_wk_spri_esker, glmm_wk_spr_comm_bu_tgt, glmm_wk_spr_comm_td_tgt, glmm_wk_spr_comm_app_tgt)
 ```
 
 ###Save Model Selection
 ```{r}
 # Capture the model selection
-#summary_output <- capture.output(model.sel(glmm_wk_spri_null, glmm_wk_spri_lcc_2, glmm_wk_spri_dem, glmm_wk_spri_tgt_h, glmm_wk_spri_tgt_l, glmm_wk_spri_ung, glmm_wk_spri_ungpred, glmm_wk_spr_comm_bu, glmm_wk_spr_comm_td, glmm_wk_spr_comm_app, glmm_wk_spri_esker, glmm_wk_spr_comm_bu_tgt, glmm_wk_spr_comm_td_tgt, glmm_wk_spr_comm_app_tgt))
+#summary_output <- capture.output(model.sel(glmm_wk_spri_null, glmm_wk_spr_comm_bu, glmm_wk_spr_comm_td, glmm_wk_spr_comm_bu_tgt, glmm_wk_spr_comm_td_tgt, glmm_wk_spr_comm_app_2, glmm_wk_spr_comm_app_2_tgt, glmm_wk_spr_comm_app_3, glmm_wk_spr_comm_app_3_tgt))
 
 # Save the model selection to a CSV file
-#write.csv(summary_output, file = "Tables/region_spr_models.csv", row.names = FALSE)
+#write.csv(summary_output, file = "Tables/region_spr_models_fnl.csv", row.names = FALSE)
 ```
 
 ###Save Top Model
 ```{r}
 # Capture the summary output
-#summary_output <- capture.output(summary(glmm_wk_spri_lcc_2))
+#summary_output <- capture.output(summary(glmm_wk_spr_comm_bu_tgt))
 
 # Save the summary data to a CSV file
-#write.csv(summary_output, file = "Tables/region_spr_comm_lcc_2.csv", row.names = FALSE)
+#write.csv(summary_output, file = "Tables/region_spr_comm_bu_tgt.csv", row.names = FALSE)
 ```
 
 ################################################################################################################################################################################################################################################################################################
@@ -1462,7 +1674,7 @@ summary(glmm_wk_cbou_tgt_l)
 ### Ungulates
 ```{r}
 glmm_wk_cbou_ung <- glmmTMB(Caribou ~ 
-                    Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    scale(Muskox) + scale(Moose) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
 summary(glmm_wk_cbou_ung)
@@ -1478,11 +1690,11 @@ summary(glmm_wk_cbou_ung)
 
 ### Ungulates + Pred
 ```{r}
-glmm_wk_cbou_ungpred <- glmmTMB(Caribou ~ 
-                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+#glmm_wk_cbou_ungpred <- glmmTMB(Caribou ~ 
+#                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
-summary(glmm_wk_cbou_ungpred)
+#summary(glmm_wk_cbou_ungpred)
 ```
 
 #############################################################################################
@@ -1490,10 +1702,15 @@ summary(glmm_wk_cbou_ungpred)
 ## Committee Models
 
 ### Bottom Up
+
+####NOTE: At the local scale, SPTNF, TSPBDF, and TSPS account for less than 1% of total area captured within buffer areas and were thus omitted.
+
+SPPSLM accounts for 44% of the total buffer area at the local scale and will be used as the reference level and thus ommitted from the model. 
+
 wo target
 ```{r}
 glmm_wk_cbou_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_comm_bu)
 ```
@@ -1501,7 +1718,7 @@ summary(glmm_wk_cbou_comm_bu)
 wtarget
 ```{r}
 glmm_wk_cbou_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_comm_bu_tgt)
 ```
@@ -1510,7 +1727,7 @@ summary(glmm_wk_cbou_comm_bu_tgt)
 wo target
 ```{r}
 glmm_wk_cbou_comm_td <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_comm_td)
 ```
@@ -1518,7 +1735,7 @@ summary(glmm_wk_cbou_comm_td)
 wtarget
 ```{r}
 glmm_wk_cbou_comm_td_tgt <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_comm_td_tgt)
 ```
@@ -1527,7 +1744,7 @@ summary(glmm_wk_cbou_comm_td_tgt)
 wo target
 ```{r}
 glmm_wk_cbou_comm_app <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_comm_app)
 ```
@@ -1535,30 +1752,71 @@ summary(glmm_wk_cbou_comm_app)
 wtarget
 ```{r}
 glmm_wk_cbou_comm_app_tgt <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_comm_app_tgt)
 ```
 
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_cbou_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_cbou_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_comm_app_3_tgt)
+```
+
+
 ###Committee Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_null, glmm_wk_cbou_wk, glmm_wk_cbou_fourssn, glmm_wk_cbou_tgt_l, glmm_wk_cbou_tgt_h, glmm_wk_cbou_comm_bu, glmm_wk_cbou_comm_td, glmm_wk_cbou_comm_app, glmm_wk_cbou_comm_bu_tgt, glmm_wk_cbou_comm_td_tgt, glmm_wk_cbou_comm_app_tgt)
+model.sel(glmm_wk_cbou_null, glmm_wk_cbou_wk, glmm_wk_cbou_fourssn, glmm_wk_cbou_tgt_l, glmm_wk_cbou_tgt_h, glmm_wk_cbou_comm_bu, glmm_wk_cbou_comm_td, glmm_wk_cbou_comm_app, glmm_wk_cbou_comm_bu_tgt, glmm_wk_cbou_comm_td_tgt, glmm_wk_cbou_comm_app_tgt, glmm_wk_cbou_comm_app_2, glmm_wk_cbou_comm_app_2_tgt, glmm_wk_cbou_comm_app_3, glmm_wk_cbou_comm_app_3_tgt)
 ```
 
 #############################################################################################
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_null, glmm_wk_cbou_fourssn, glmm_wk_cbou_wk, glmm_wk_cbou_lcc_2, glmm_wk_cbou_dem, glmm_wk_cbou_tgt_l, glmm_wk_cbou_tgt_h, glmm_wk_cbou_ung, glmm_wk_cbou_ungpred, glmm_wk_cbou_comm_bu, glmm_wk_cbou_comm_td, glmm_wk_cbou_comm_app, glmm_wk_cbou_esker, glmm_wk_cbou_comm_bu_tgt, glmm_wk_cbou_comm_td_tgt, glmm_wk_cbou_comm_app_tgt)
+model.sel(glmm_wk_cbou_null, glmm_wk_cbou_fourssn, glmm_wk_cbou_wk, glmm_wk_cbou_lcc_2, glmm_wk_cbou_dem, glmm_wk_cbou_tgt_l, glmm_wk_cbou_tgt_h, glmm_wk_cbou_ung, glmm_wk_cbou_comm_bu, glmm_wk_cbou_comm_td, glmm_wk_cbou_comm_app, glmm_wk_cbou_esker, glmm_wk_cbou_comm_bu_tgt, glmm_wk_cbou_comm_td_tgt, glmm_wk_cbou_comm_app_tgt)
 ```
 
 ###Save Model Selection
 ```{r}
 # Capture the model selection
-#summary_output <- capture.output(model.sel(glmm_wk_cbou_null, glmm_wk_cbou_fourssn, glmm_wk_cbou_wk, glmm_wk_cbou_lcc_2, glmm_wk_cbou_dem, glmm_wk_cbou_tgt_l, glmm_wk_cbou_tgt_h, glmm_wk_cbou_ung, glmm_wk_cbou_ungpred, glmm_wk_cbou_comm_bu, glmm_wk_cbou_comm_td, glmm_wk_cbou_comm_app, glmm_wk_cbou_esker, glmm_wk_cbou_comm_bu_tgt, glmm_wk_cbou_comm_td_tgt, glmm_wk_cbou_comm_app_tgt))
+#summary_output <- capture.output(model.sel(glmm_wk_cbou_null, glmm_wk_cbou_wk, glmm_wk_cbou_comm_bu, glmm_wk_cbou_comm_td, glmm_wk_cbou_comm_bu_tgt, glmm_wk_cbou_comm_td_tgt, glmm_wk_cbou_comm_app_2, glmm_wk_cbou_comm_app_2_tgt, glmm_wk_cbou_comm_app_3, glmm_wk_cbou_comm_app_3_tgt))
 
 # Save the model selection to a CSV file
-#write.csv(summary_output, file = "Tables/local_multi_models.csv", row.names = FALSE)
+#write.csv(summary_output, file = "Tables/local_multi_models_fnl.csv", row.names = FALSE)
 ```
 
 ###Save Top Model
@@ -1678,7 +1936,7 @@ summary(glmm_wk_cbou_smr_tgt_l)
 ### Ungulates
 ```{r}
 glmm_wk_cbou_smr_ung <- glmmTMB(Caribou ~ 
-                    Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    scale(Muskox) + scale(Moose) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
 summary(glmm_wk_cbou_smr_ung)
@@ -1696,11 +1954,11 @@ summary(glmm_wk_cbou_smr_ung)
 
 ### Ungulates + Pred
 ```{r}
-glmm_wk_cbou_smr_ungpred <- glmmTMB(Caribou ~ 
-                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+#glmm_wk_cbou_smr_ungpred <- glmmTMB(Caribou ~ 
+ #                   Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
-summary(glmm_wk_cbou_smr_ungpred)
+#summary(glmm_wk_cbou_smr_ungpred)
 ```
 
 #############################################################################################
@@ -1752,7 +2010,7 @@ NOT GOING DOWN THIS ROUTE...
 wo target
 ```{r}
 glmm_wk_cbou_smr_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_smr_comm_bu)
 ```
@@ -1760,7 +2018,7 @@ summary(glmm_wk_cbou_smr_comm_bu)
 w target
 ```{r}
 glmm_wk_cbou_smr_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_smr_comm_bu_tgt)
 ```
@@ -1769,7 +2027,7 @@ summary(glmm_wk_cbou_smr_comm_bu_tgt)
 wo target
 ```{r}
 glmm_wk_cbou_smr_comm_td <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_smr_comm_td)
 ```
@@ -1777,7 +2035,7 @@ summary(glmm_wk_cbou_smr_comm_td)
 w target
 ```{r}
 glmm_wk_cbou_smr_comm_td_tgt <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_smr_comm_td_tgt)
 ```
@@ -1786,7 +2044,7 @@ summary(glmm_wk_cbou_smr_comm_td_tgt)
 wo target
 ```{r}
 glmm_wk_cbou_smr_comm_app <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_smr_comm_app)
 ```
@@ -1794,14 +2052,55 @@ summary(glmm_wk_cbou_smr_comm_app)
 w target
 ```{r}
 glmm_wk_cbou_smr_comm_app_tgt <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_smr_comm_app_tgt)
 ```
 
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_cbou_smr_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_smr_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_cbou_smr_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_smr_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_comm_app_3_tgt)
+```
+
+
 ####Committee Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_smr_null, glmm_wk_cbou_smr_wk, glmm_wk_cbou_smr_tgt_h, glmm_wk_cbou_smr_tgt_l, glmm_wk_cbou_smr_comm_bu, glmm_wk_cbou_smr_comm_td, glmm_wk_cbou_smr_comm_app, glmm_wk_cbou_smr_comm_bu_tgt, glmm_wk_cbou_smr_comm_td_tgt, glmm_wk_cbou_smr_comm_app_tgt)
+model.sel(glmm_wk_cbou_smr_null, glmm_wk_cbou_smr_wk, glmm_wk_cbou_smr_tgt_h, glmm_wk_cbou_smr_tgt_l, glmm_wk_cbou_smr_comm_bu, glmm_wk_cbou_smr_comm_td, glmm_wk_cbou_smr_comm_app, glmm_wk_cbou_smr_comm_bu_tgt, glmm_wk_cbou_smr_comm_td_tgt, glmm_wk_cbou_smr_comm_app_tgt, glmm_wk_cbou_smr_comm_app_2, glmm_wk_cbou_smr_comm_app_2_tgt, glmm_wk_cbou_smr_comm_app_3, glmm_wk_cbou_smr_comm_app_3_tgt)
 ```
 
 #############################################################################################
@@ -1816,16 +2115,16 @@ summary(glmm_wk_cbou_smr_glob)
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_smr_null, glmm_wk_cbou_smr_wk, glmm_wk_cbou_smr_lcc_2, glmm_wk_cbou_smr_dem, glmm_wk_cbou_smr_tgt_h, glmm_wk_cbou_smr_tgt_l, glmm_wk_cbou_smr_ung, glmm_wk_cbou_smr_ungpred, glmm_wk_cbou_smr_comm_bu, glmm_wk_cbou_smr_comm_td, glmm_wk_cbou_smr_comm_app, glmm_wk_cbou_smr_comm_bu_tgt, glmm_wk_cbou_smr_comm_td_tgt, glmm_wk_cbou_smr_comm_app_tgt, glmm_wk_cbou_smr_esker)
+model.sel(glmm_wk_cbou_smr_null, glmm_wk_cbou_smr_wk, glmm_wk_cbou_smr_lcc_2, glmm_wk_cbou_smr_dem, glmm_wk_cbou_smr_tgt_h, glmm_wk_cbou_smr_tgt_l, glmm_wk_cbou_smr_ung, glmm_wk_cbou_smr_comm_bu, glmm_wk_cbou_smr_comm_td, glmm_wk_cbou_smr_comm_app, glmm_wk_cbou_smr_comm_bu_tgt, glmm_wk_cbou_smr_comm_td_tgt, glmm_wk_cbou_smr_comm_app_tgt, glmm_wk_cbou_smr_esker)
 ```
 
 ###Save Model Selection
 ```{r}
 # Capture the model selection
-#summary_output <- capture.output(model.sel(glmm_wk_cbou_smr_null, glmm_wk_cbou_smr_lcc_2, glmm_wk_cbou_smr_dem, glmm_wk_cbou_smr_tgt_h, glmm_wk_cbou_smr_tgt_l, glmm_wk_cbou_smr_ung, glmm_wk_cbou_smr_ungpred, glmm_wk_cbou_smr_comm_bu, glmm_wk_cbou_smr_comm_td, glmm_wk_cbou_smr_comm_app, glmm_wk_cbou_smr_comm_bu_tgt, glmm_wk_cbou_smr_comm_td_tgt, glmm_wk_cbou_smr_comm_app_tgt, glmm_wk_cbou_smr_esker))
+#summary_output <- capture.output(model.sel(glmm_wk_cbou_smr_null, glmm_wk_cbou_smr_comm_bu, glmm_wk_cbou_smr_comm_td, glmm_wk_cbou_smr_comm_bu_tgt, glmm_wk_cbou_smr_comm_td_tgt, glmm_wk_cbou_smr_comm_app_2, glmm_wk_cbou_smr_comm_app_2_tgt, glmm_wk_cbou_smr_comm_app_3, glmm_wk_cbou_smr_comm_app_3_tgt))
 
 # Save the model selection to a CSV file
-#write.csv(summary_output, file = "Tables/local_smr_models.csv", row.names = FALSE)
+#write.csv(summary_output, file = "Tables/local_smr_models_fnl.csv", row.names = FALSE)
 ```
 
 ###Save Top Model
@@ -1878,7 +2177,7 @@ glmm_wk_cbou_fall_lcc <- glmmTMB(Caribou ~
 summary(glmm_wk_cbou_fall_lcc)
 ```
 
-### LCC Cons
+### LCC wout rare
 ```{r}
 glmm_wk_cbou_fall_lcc_2 <- glmmTMB(Caribou ~ 
                     z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
@@ -1942,7 +2241,7 @@ summary(glmm_wk_cbou_fall_tgt_l)
 ### Ungulates
 ```{r}
 glmm_wk_cbou_fall_ung <- glmmTMB(Caribou ~ 
-                    Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    scale(Muskox) + scale(Moose) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_fall_ung)
 ```
@@ -1957,10 +2256,10 @@ summary(glmm_wk_cbou_fall_ung)
 
 ### Ungulates + Pred
 ```{r}
-glmm_wk_cbou_fall_ungpred <- glmmTMB(Caribou ~ 
-                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+#glmm_wk_cbou_fall_ungpred <- glmmTMB(Caribou ~ 
+ #                   scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
-summary(glmm_wk_cbou_fall_ungpred)
+#summary(glmm_wk_cbou_fall_ungpred)
 ```
 
 #############################################################################################
@@ -1978,7 +2277,7 @@ summary(glmm_wk_cbou_fall_ungpred)
 wo target
 ```{r}
 glmm_wk_cbou_fll_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_fll_comm_bu)
 ```
@@ -1986,7 +2285,7 @@ summary(glmm_wk_cbou_fll_comm_bu)
 w tgt
 ```{r}
 glmm_wk_cbou_fll_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_fll_comm_bu_tgt)
 ```
@@ -1995,7 +2294,7 @@ summary(glmm_wk_cbou_fll_comm_bu_tgt)
 wo tgt
 ```{r}
 glmm_wk_cbou_fll_comm_td <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_fll_comm_td)
 ```
@@ -2003,7 +2302,7 @@ summary(glmm_wk_cbou_fll_comm_td)
 w tgt
 ```{r}
 glmm_wk_cbou_fll_comm_td_tgt <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_fll_comm_td_tgt)
 ```
@@ -2012,7 +2311,7 @@ summary(glmm_wk_cbou_fll_comm_td_tgt)
 wo target
 ```{r}
 glmm_wk_cbou_fll_comm_app <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_fll_comm_app)
 ```
@@ -2020,14 +2319,55 @@ summary(glmm_wk_cbou_fll_comm_app)
 w target
 ```{r}
 glmm_wk_cbou_fll_comm_app_tgt <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_fll_comm_app_tgt)
 ```
 
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_cbou_fll_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fll_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_fll_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fll_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_cbou_fll_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fll_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_fll_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fll_comm_app_3_tgt)
+```
+
+
 ####Committee Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_fall_null, glmm_wk_cbou_fall_wk, glmm_wk_cbou_fall_tgt_h, glmm_wk_cbou_fall_tgt_l, glmm_wk_cbou_fll_comm_bu, glmm_wk_cbou_fll_comm_td, glmm_wk_cbou_fll_comm_app, glmm_wk_cbou_fll_comm_bu_tgt, glmm_wk_cbou_fll_comm_td_tgt, glmm_wk_cbou_fll_comm_app_tgt)
+model.sel(glmm_wk_cbou_fall_null, glmm_wk_cbou_fall_wk, glmm_wk_cbou_fall_tgt_h, glmm_wk_cbou_fall_tgt_l, glmm_wk_cbou_fll_comm_bu, glmm_wk_cbou_fll_comm_td, glmm_wk_cbou_fll_comm_app, glmm_wk_cbou_fll_comm_bu_tgt, glmm_wk_cbou_fll_comm_td_tgt, glmm_wk_cbou_fll_comm_app_tgt, glmm_wk_cbou_fll_comm_app_2, glmm_wk_cbou_fll_comm_app_2_tgt, glmm_wk_cbou_fll_comm_app_3, glmm_wk_cbou_fll_comm_app_3_tgt)
 ```
 
 #############################################################################################
@@ -2042,16 +2382,16 @@ summary(glmm_wk_cbou_fall_glob)
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_fall_null, glmm_wk_cbou_fall_wk, glmm_wk_cbou_fall_lcc_2, glmm_wk_cbou_fall_dem, glmm_wk_cbou_fall_tgt_h, glmm_wk_cbou_fall_tgt_l, glmm_wk_cbou_fall_ung, glmm_wk_cbou_fall_ungpred, glmm_wk_cbou_fll_comm_bu, glmm_wk_cbou_fll_comm_td, glmm_wk_cbou_fll_comm_app, glmm_wk_cbou_fall_esker, glmm_wk_cbou_fll_comm_bu_tgt, glmm_wk_cbou_fll_comm_td_tgt, glmm_wk_cbou_fll_comm_app_tgt)
+model.sel(glmm_wk_cbou_fall_null, glmm_wk_cbou_fall_wk, glmm_wk_cbou_fall_lcc_2, glmm_wk_cbou_fall_dem, glmm_wk_cbou_fall_tgt_h, glmm_wk_cbou_fall_tgt_l, glmm_wk_cbou_fall_ung, glmm_wk_cbou_fll_comm_bu, glmm_wk_cbou_fll_comm_td, glmm_wk_cbou_fll_comm_app, glmm_wk_cbou_fall_esker, glmm_wk_cbou_fll_comm_bu_tgt, glmm_wk_cbou_fll_comm_td_tgt, glmm_wk_cbou_fll_comm_app_tgt)
 ```
 
 ###Save Model Selection
 ```{r}
 # Capture the model selection
-#summary_output <- capture.output(model.sel(glmm_wk_cbou_fall_null, glmm_wk_cbou_fall_lcc_2, glmm_wk_cbou_fall_dem, glmm_wk_cbou_fall_tgt_h, glmm_wk_cbou_fall_tgt_l, glmm_wk_cbou_fall_ung, glmm_wk_cbou_fall_ungpred, glmm_wk_cbou_fll_comm_bu, glmm_wk_cbou_fll_comm_td, glmm_wk_cbou_fll_comm_app, glmm_wk_cbou_fall_esker, glmm_wk_cbou_fll_comm_bu_tgt, glmm_wk_cbou_fll_comm_td_tgt, glmm_wk_cbou_fll_comm_app_tgt))
+#summary_output <- capture.output(model.sel(glmm_wk_cbou_fall_null, glmm_wk_cbou_fll_comm_bu, glmm_wk_cbou_fll_comm_td, glmm_wk_cbou_fll_comm_bu_tgt, glmm_wk_cbou_fll_comm_td_tgt, glmm_wk_cbou_fll_comm_app_2, glmm_wk_cbou_fll_comm_app_2_tgt, glmm_wk_cbou_fll_comm_app_3, glmm_wk_cbou_fll_comm_app_3_tgt))
 
 # Save the model selection to a CSV file
-#write.csv(summary_output, file = "Tables/local_fll_models.csv", row.names = FALSE)
+#write.csv(summary_output, file = "Tables/local_fll_models_fnl.csv", row.names = FALSE)
 ```
 
 ###Save Top Model
@@ -2169,7 +2509,7 @@ summary(glmm_wk_cbou_wtr_tgt_l)
 ### Ungulates
 ```{r}
 glmm_wk_cbou_wtr_ung <- glmmTMB(Caribou ~ 
-                    Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    scale(Muskox) + scale(Moose) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
 summary(glmm_wk_cbou_wtr_ung)
@@ -2186,11 +2526,11 @@ summary(glmm_wk_cbou_wtr_ung)
 
 ### Ungulates + Pred
 ```{r}
-glmm_wk_cbou_wtr_ungpred <- glmmTMB(Caribou ~ 
-                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+#glmm_wk_cbou_wtr_ungpred <- glmmTMB(Caribou ~ 
+#                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
-summary(glmm_wk_cbou_wtr_ungpred)
+#summary(glmm_wk_cbou_wtr_ungpred)
 ```
 
 #############################################################################################
@@ -2208,7 +2548,7 @@ summary(glmm_wk_cbou_wtr_ungpred)
 wo tgt
 ```{r}
 glmm_wk_cbou_wtr_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_wtr_comm_bu)
 ```
@@ -2216,7 +2556,7 @@ summary(glmm_wk_cbou_wtr_comm_bu)
 w tgt
 ```{r}
 glmm_wk_cbou_wtr_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_wtr_comm_bu_tgt)
 ```
@@ -2225,7 +2565,7 @@ summary(glmm_wk_cbou_wtr_comm_bu_tgt)
 wo tgt
 ```{r}
 glmm_wk_cbou_wtr_comm_td <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_wtr_comm_td)
 ```
@@ -2233,7 +2573,7 @@ summary(glmm_wk_cbou_wtr_comm_td)
 w tgt
 ```{r}
 glmm_wk_cbou_wtr_comm_td_tgt <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf)+ target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_wtr_comm_td_tgt)
 ```
@@ -2242,7 +2582,7 @@ summary(glmm_wk_cbou_wtr_comm_td_tgt)
 wo tgt
 ```{r}
 glmm_wk_cbou_wtr_comm_app <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_wtr_comm_app)
 ```
@@ -2250,39 +2590,80 @@ summary(glmm_wk_cbou_wtr_comm_app)
 w tgt
 ```{r}
 glmm_wk_cbou_wtr_comm_app_tgt <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_wtr_comm_app_tgt)
 ```
 
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_cbou_wtr_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_wtr_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_wtr_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_wtr_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_cbou_wtr_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_wtr_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_wtr_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_wtr_comm_app_3_tgt)
+```
+
+
 ####Committee Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_tgt_h, glmm_wk_cbou_wtr_tgt_l, glmm_wk_cbou_wtr_comm_bu, glmm_wk_cbou_wtr_comm_td, glmm_wk_cbou_wtr_comm_app, glmm_wk_cbou_wtr_comm_bu_tgt, glmm_wk_cbou_wtr_comm_td_tgt, glmm_wk_cbou_wtr_comm_app_tgt)
+model.sel(glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_tgt_h, glmm_wk_cbou_wtr_tgt_l, glmm_wk_cbou_wtr_comm_bu, glmm_wk_cbou_wtr_comm_td, glmm_wk_cbou_wtr_comm_app, glmm_wk_cbou_wtr_comm_bu_tgt, glmm_wk_cbou_wtr_comm_td_tgt, glmm_wk_cbou_wtr_comm_app_tgt, glmm_wk_cbou_wtr_comm_app_2, glmm_wk_cbou_wtr_comm_app_2_tgt, glmm_wk_cbou_wtr_comm_app_3, glmm_wk_cbou_wtr_comm_app_3_tgt)
 ```
 
 #############################################################################################
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_lcc_2, glmm_wk_cbou_wtr_dem, glmm_wk_cbou_wtr_tgt_h, glmm_wk_cbou_wtr_tgt_l, glmm_wk_cbou_wtr_ung, glmm_wk_cbou_wtr_ungpred, glmm_wk_cbou_wtr_comm_bu, glmm_wk_cbou_wtr_comm_td, glmm_wk_cbou_wtr_comm_app, glmm_wk_cbou_wtr_comm_bu_tgt, glmm_wk_cbou_wtr_comm_td_tgt, glmm_wk_cbou_wtr_comm_app_tgt, glmm_wk_cbou_wtr_esker)
+model.sel(glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_lcc_2, glmm_wk_cbou_wtr_dem, glmm_wk_cbou_wtr_tgt_h, glmm_wk_cbou_wtr_tgt_l, glmm_wk_cbou_wtr_ung, glmm_wk_cbou_wtr_comm_bu, glmm_wk_cbou_wtr_comm_td, glmm_wk_cbou_wtr_comm_app, glmm_wk_cbou_wtr_comm_bu_tgt, glmm_wk_cbou_wtr_comm_td_tgt, glmm_wk_cbou_wtr_comm_app_tgt, glmm_wk_cbou_wtr_esker)
 ```
 
 ###Save Model Selection
 ```{r}
 # Capture the model selection
-#summary_output <- capture.output(model.sel(glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_lcc_2, glmm_wk_cbou_wtr_dem, glmm_wk_cbou_wtr_tgt_h, glmm_wk_cbou_wtr_tgt_l, glmm_wk_cbou_wtr_ung, glmm_wk_cbou_wtr_ungpred, glmm_wk_cbou_wtr_comm_bu, glmm_wk_cbou_wtr_comm_td, glmm_wk_cbou_wtr_comm_app, glmm_wk_cbou_wtr_comm_bu_tgt, glmm_wk_cbou_wtr_comm_td_tgt, glmm_wk_cbou_wtr_comm_app_tgt, glmm_wk_cbou_wtr_esker))
+#summary_output <- capture.output(model.sel(glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_comm_bu, glmm_wk_cbou_wtr_comm_td, glmm_wk_cbou_wtr_comm_bu_tgt, glmm_wk_cbou_wtr_comm_td_tgt, glmm_wk_cbou_wtr_comm_app_2, glmm_wk_cbou_wtr_comm_app_2_tgt, glmm_wk_cbou_wtr_comm_app_3, glmm_wk_cbou_wtr_comm_app_3_tgt))
 
 # Save the model selection to a CSV file
-#write.csv(summary_output, file = "Tables/local_wtr_models.csv", row.names = FALSE)
+#write.csv(summary_output, file = "Tables/local_wtr_models_fnl.csv", row.names = FALSE)
 ```
 
 ###Save Top Model
 ```{r}
 # Capture the summary output
-#summary_output <- capture.output(summary(glmm_wk_cbou_wtr_comm_td))
+#summary_output <- capture.output(summary(glmm_wk_cbou_wtr_comm_app_3))
 
 # Save the summary data to a CSV file
-#write.csv(summary_output, file = "Tables/local_wtr_comm_td.csv", row.names = FALSE)
+#write.csv(summary_output, file = "Tables/local_wtr_comm_app_3.csv", row.names = FALSE)
 ```
 
 
@@ -2394,7 +2775,7 @@ summary(glmm_wk_cbou_spri_tgt_l)
 ### Ungulates
 ```{r}
 glmm_wk_cbou_spri_ung <- glmmTMB(Caribou ~ 
-                    Muskox + Moose + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                    scale(Muskox) + scale(Moose) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
 summary(glmm_wk_cbou_spri_ung)
@@ -2411,11 +2792,11 @@ summary(glmm_wk_cbou_spri_ung)
 
 ### Ungulates + Pred
 ```{r}
-glmm_wk_cbou_spri_ungpred <- glmmTMB(Caribou ~ 
-                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+#glmm_wk_cbou_spri_ungpred <- glmmTMB(Caribou ~ 
+#                    Muskox + Moose + Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 
-summary(glmm_wk_cbou_spri_ungpred)
+#summary(glmm_wk_cbou_spri_ungpred)
 ```
 
 #############################################################################################
@@ -2433,7 +2814,7 @@ summary(glmm_wk_cbou_spri_ungpred)
 wo tgt
 ```{r}
 glmm_wk_cbou_spr_comm_bu <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_spr_comm_bu)
 ```
@@ -2441,7 +2822,7 @@ summary(glmm_wk_cbou_spr_comm_bu)
 w tgt
 ```{r}
 glmm_wk_cbou_spr_comm_bu_tgt <- glmmTMB(Caribou ~ 
-                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_spr_comm_bu_tgt)
 ```
@@ -2450,7 +2831,7 @@ summary(glmm_wk_cbou_spr_comm_bu_tgt)
 wo tgt
 ```{r}
 glmm_wk_cbou_spr_comm_td <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_spr_comm_td)
 ```
@@ -2458,7 +2839,7 @@ summary(glmm_wk_cbou_spr_comm_td)
 w tgt
 ```{r}
 glmm_wk_cbou_spr_comm_td_tgt <- glmmTMB(Caribou ~ 
-                  Gray.Wolf + Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_spr_comm_td_tgt)
 ```
@@ -2467,7 +2848,7 @@ summary(glmm_wk_cbou_spr_comm_td_tgt)
 wo tgt
 ```{r}
 glmm_wk_cbou_spr_comm_app <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_spr_comm_app)
 ```
@@ -2475,30 +2856,70 @@ summary(glmm_wk_cbou_spr_comm_app)
 w tgt
 ```{r}
 glmm_wk_cbou_spr_comm_app_tgt <- glmmTMB(Caribou ~ 
-                  Muskox + Moose + Gray.Wolf + Grizzly.Bear + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+                 scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
 
 summary(glmm_wk_cbou_spr_comm_app_tgt)
 ```
 
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_cbou_spr_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_spr_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_spr_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_spr_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_cbou_spr_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_spr_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_spr_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_spr_comm_app_3_tgt)
+```
+
 ####Committee Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spri_tgt_h, glmm_wk_cbou_spri_tgt_l, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_app, glmm_wk_cbou_spr_comm_bu_tgt, glmm_wk_cbou_spr_comm_td_tgt, glmm_wk_cbou_spr_comm_app_tgt)
+model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_bu_tgt, glmm_wk_cbou_spr_comm_td_tgt, glmm_wk_cbou_spr_comm_app_2, glmm_wk_cbou_spr_comm_app_2_tgt, glmm_wk_cbou_spr_comm_app_3, glmm_wk_cbou_spr_comm_app_3_tgt)
 ```
 
 #############################################################################################
 
 ## Model Selection
 ```{r}
-model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spri_lcc_2, glmm_wk_cbou_spri_dem, glmm_wk_cbou_spri_tgt_h, glmm_wk_cbou_spri_tgt_l, glmm_wk_cbou_spri_ung, glmm_wk_cbou_spri_ungpred, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_app, glmm_wk_cbou_spr_comm_bu_tgt, glmm_wk_cbou_spr_comm_td_tgt, glmm_wk_cbou_spr_comm_app_tgt, glmm_wk_cbou_spri_esker)
+model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spri_lcc_2, glmm_wk_cbou_spri_dem, glmm_wk_cbou_spri_tgt_h, glmm_wk_cbou_spri_tgt_l, glmm_wk_cbou_spri_ung, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_app, glmm_wk_cbou_spr_comm_bu_tgt, glmm_wk_cbou_spr_comm_td_tgt, glmm_wk_cbou_spr_comm_app_tgt, glmm_wk_cbou_spri_esker)
 ```
 
 ###Save Model Selection
 ```{r}
 # Capture the model selection
-#summary_output <- capture.output(model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spri_lcc_2, glmm_wk_cbou_spri_dem, glmm_wk_cbou_spri_tgt_h, glmm_wk_cbou_spri_tgt_l, glmm_wk_cbou_spri_ung, glmm_wk_cbou_spri_ungpred, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_app, glmm_wk_cbou_spr_comm_bu_tgt, glmm_wk_cbou_spr_comm_td_tgt, glmm_wk_cbou_spr_comm_app_tgt, glmm_wk_cbou_spri_esker))
+summary_output <- capture.output(model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_bu_tgt, glmm_wk_cbou_spr_comm_td_tgt, glmm_wk_cbou_spr_comm_app_2, glmm_wk_cbou_spr_comm_app_3, glmm_wk_cbou_spr_comm_app_3_tgt))
 
 # Save the model selection to a CSV file
-#write.csv(summary_output, file = "Tables/local_spr_models.csv", row.names = FALSE)
+write.csv(summary_output, file = "Tables/local_spr_models_fnl.csv", row.names = FALSE)
 ```
 
 ###Save Top Model
@@ -2510,4 +2931,27 @@ model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spri_lcc_2, glmm_wk_cbou_spri_dem
 #write.csv(summary_output, file = "Tables/local_spri_lcc_2.csv", row.names = FALSE)
 ```
 
+```{r}
+#cluster analysis
+tdn_clust_summaries_full<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_full.csv")
+
+# Specify the dataframe and species columns, excluding the first four columns
+df <- tdn_clust_summaries_full
+species_columns <- colnames(df)[7:76]  # Exclude the first two columns
+
+# Count the number of sampling sites where each species was detected
+species_detected_sites <- colSums(df[, species_columns] > 0)
+
+# Calculate the total number of sampling sites
+total_sites <- count(unique(mod_dat_wk$location))
+
+# Calculate the proportion of sampling sites each species was detected at
+species_proportions <- species_detected_sites / total_sites
+
+# Create a dataframe with species names and their respective proportions
+summary_df <- data.frame(Species = names(species_proportions), Proportion_Detected = species_proportions)
+
+# Print the new summary dataframe
+print(summary_df)
+```
 

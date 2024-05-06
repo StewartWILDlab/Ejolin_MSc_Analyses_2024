@@ -31,6 +31,7 @@ locs <- locs %>%
 # You should also standardize your covariates - it helps models coverage and facillitates comparison of effects sizes
 
 #NEED TO RUN THIS SO LAT/LONG DONT GET STANDARDIZED
+#non response variable species should be scaled but that can manually be done in the GLMM formulas
 library(MuMIn)
 z_locs <- stdize(locs, omit.cols = c("latitude","longitude","latitude_site","longitude_site","spatial_scale"))
 ```
@@ -110,7 +111,7 @@ The telemetry data was informative but still found it difficult to set seasonal 
 Let's see how this breaks down into 1 day events to help determine seasonal breaks
 ```{r}
 #Load biweekly detection data
-daily_obs<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_day_mam.csv")
+daily_obs<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_day.csv")
 ```
 
 Join this dataframe with the standardized location data:
@@ -269,7 +270,7 @@ ggplot(daily_sum, aes(x = day, y = total_daily_cr, fill = four_season)) +
 #  Multiseason, WEEKLY detections
 ```{r}
 # Import the total observations dataset
-weekly_obs <- read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_week_mam.csv", header=T)
+weekly_obs <- read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_week.csv", header=T)
 ```
 
 Join this dataframe with the location data, as before:
@@ -416,6 +417,13 @@ ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) 
   theme_minimal() +
   scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+##Consolidate Ungulates and Predators
+```{r}
+# Create new columns "Ungulates" and "Predators" by summing the respective columns
+mod_dat_wk$Ungulates <- mod_dat_wk$Muskox + mod_dat_wk$Moose
+mod_dat_wk$Predators <- mod_dat_wk$Gray.Wolf + mod_dat_wk$Grizzly.Bear
 ```
 
 ##Plotting
@@ -660,6 +668,126 @@ ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) 
   theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
 ```
 
+Ungulates
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Ungulates),total_effort = sum(n_days_effort))
+
+#create capture rate per 100 days
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Ungulate Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Ungulate Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Ungulate Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Ungulate CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Ungulates), total_effort = sum(n_days_effort))
+
+# Create capture rate per 100 days
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Ungulate Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Ungulate Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Ungulate Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Ungulate CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+Predators
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Predators),total_effort = sum(n_days_effort))
+
+#create capture rate per 100 days
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Predator Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Predator Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Predator Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Predator CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Predators), total_effort = sum(n_days_effort))
+
+# Create capture rate per 100 days
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Predator Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Predator Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Predator Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Predator CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
 map it out
 ```{r}
 # Aggregate data by location and week to get total caribou detections
@@ -713,8 +841,6 @@ map it out
 # Display the GIF
 #browseURL(gif_file)
 ```
-
-
 
 ##Target Analysis
 ```{r}
@@ -1845,28 +1971,33 @@ mod_dat_wk_cbou_spri     mod_dat_wk_cbou_spri        10109                118   
 ##Regional data sets
 ```{r}
 #multiseason
-write.csv(mod_dat_wk, file="Processed_Data/glmm_wk_region_multi.csv", row.names = F)
+#write.csv(mod_dat_wk, file="Processed_Data/glmm_wk_region_multi.csv", row.names = F)
 #summer
-write.csv(mod_dat_wk_summer, file="Processed_Data/glmm_wk_region_smr.csv", row.names = F)
+#write.csv(mod_dat_wk_summer, file="Processed_Data/glmm_wk_region_smr.csv", row.names = F)
 #fall
-write.csv(mod_dat_wk_fall, file="Processed_Data/glmm_wk_region_fall.csv", row.names = F)
+#write.csv(mod_dat_wk_fall, file="Processed_Data/glmm_wk_region_fall.csv", row.names = F)
 #winter
-write.csv(mod_dat_wk_winter, file="Processed_Data/glmm_wk_region_wtr.csv", row.names = F)
+#write.csv(mod_dat_wk_winter, file="Processed_Data/glmm_wk_region_wtr.csv", row.names = F)
 #spring
-write.csv(mod_dat_wk_spri, file="Processed_Data/glmm_wk_region_spr.csv", row.names = F)
+#write.csv(mod_dat_wk_spri, file="Processed_Data/glmm_wk_region_spr.csv", row.names = F)
 ```
 
 ##Local data sets
 ```{r}
 #multiseason
-write.csv(mod_dat_wk_cbou, file="Processed_Data/glmm_wk_local_multi.csv", row.names = F)
+#write.csv(mod_dat_wk_cbou, file="Processed_Data/glmm_wk_local_multi.csv", row.names = F)
 #summer
-write.csv(mod_dat_wk_cbou_summer, file="Processed_Data/glmm_wk_local_smr.csv", row.names = F)
+#write.csv(mod_dat_wk_cbou_summer, file="Processed_Data/glmm_wk_local_smr.csv", row.names = F)
 #fall
-write.csv(mod_dat_wk_cbou_fall, file="Processed_Data/glmm_wk_local_fall.csv", row.names = F)
+#write.csv(mod_dat_wk_cbou_fall, file="Processed_Data/glmm_wk_local_fall.csv", row.names = F)
 #winter
-write.csv(mod_dat_wk_cbou_winter, file="Processed_Data/glmm_wk_local_wtr.csv", row.names = F)
+#write.csv(mod_dat_wk_cbou_winter, file="Processed_Data/glmm_wk_local_wtr.csv", row.names = F)
 #spring
-write.csv(mod_dat_wk_cbou_spri, file="Processed_Data/glmm_wk_local_spr.csv", row.names = F)
+#write.csv(mod_dat_wk_cbou_spri, file="Processed_Data/glmm_wk_local_spr.csv", row.names = F)
+```
+
+#regional only dataset
+```{r}
+#mod_dat_wk_region_only <- subset(mod_dat_wk, spatial_scale == "regional")
 ```
 

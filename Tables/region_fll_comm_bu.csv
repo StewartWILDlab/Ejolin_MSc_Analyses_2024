@@ -1,36 +1,35 @@
 x,,,,,
  Family: nbinom2  ( log ),,,,,
-Formula:          Caribou ~ z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET +  ,,,,,
-    z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR +  ,,,,,
-    z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) +      (1 | location_site),,,,,
+Formula:          Caribou ~ z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT +  ,,,,,
+    z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 +      z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) +  ,,,,,
+    (1 | location_site),,,,,
 Data: mod_dat_wk_fall,,,,,
 ,,,,,
-AIC,BIC,logLik,deviance,df.resid,
-2872.7,2956.9,-1421.4,2842.7,1997,
+     AIC      BIC   logLik deviance df.resid ,,,,,
+  2876.0   2954.5  -1424.0   2848.0     1998 ,,,,,
 ,,,,,
 Random effects:,,,,,
 ,,,,,
 Conditional model:,,,,,
-Groups,Name,Variance,Std.Dev.,,
-location_site,(Intercept),1.471,1.213,,
+ Groups        Name        Variance Std.Dev.,,,,,
+ location_site (Intercept) 1.649    1.284   ,,,,,
 "Number of obs: 2012, groups:  location_site, 60",,,,,
 ,,,,,
-Dispersion parameter for nbinom2 family (): 0.402 ,,,,,
+Dispersion parameter for nbinom2 family ():  0.4 ,,,,,
 ,,,,,
 Conditional model:,,,,,
 ,Estimate,Std. Error,z value,Pr(>|z|),
-(Intercept),-6.6129,0.7661,-8.632,< 2e-16,***
-z.X300_SPPGLM,7.2136,3.3106,2.179,0.02934,*
-z.X300_SPPSLM,11.3864,5.2317,2.176,0.02952,*
-z.X300_TSPNF,8.8395,5.0835,1.739,0.08206,.
-z.X300_WET,3.8934,2.0086,1.938,0.05258,.
-z.X300_WAT,6.1494,2.8841,2.132,0.03299,*
-z.X300_MF,3.8336,1.961,1.955,0.05059,.
-z.X300_TSPS,4.7963,3.2723,1.466,0.14272,
-z.X300_TSPG,5.9169,3.622,1.634,0.10234,
-z.X300_BAR,2.1978,1.0876,2.021,0.0433,*
-z.mean_elev_300,0.3506,0.2349,1.493,0.13557,
-z.mean_tri_300,-1.1563,0.4093,-2.825,0.00472,**
-z.esker_dist_m,-1.17,0.484,-2.418,0.01562,*
+(Intercept),-6.55374,0.75082,-8.729,< 2e-16,***
+z.X300_SPPGLM,0.01092,0.14408,0.076,0.93961,
+z.X300_TSPNF,-2.3004,0.498,-4.619,3.85E-06,***
+z.X300_WET,-0.47352,0.1545,-3.065,0.00218,**
+z.X300_WAT,-0.11982,0.116,-1.033,0.30163,
+z.X300_MF,-0.31252,0.38047,-0.821,0.41142,
+z.X300_TSPS,-1.64033,1.56737,-1.047,0.29531,
+z.X300_TSPG,-1.85196,0.59313,-3.122,0.00179,**
+z.X300_BAR,-0.16211,0.08719,-1.859,0.06301,.
+z.mean_elev_300,0.36552,0.23751,1.539,0.12381,
+z.mean_tri_300,-1.11237,0.41124,-2.705,0.00683,**
+z.esker_dist_m,-1.10992,0.50095,-2.216,0.02672,*
 ---,,,,,
 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1,,,,,

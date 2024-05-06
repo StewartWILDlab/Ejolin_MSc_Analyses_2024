@@ -1,0 +1,35 @@
+x,,,,,,,,,,,,
+Model selection table ,,,,,,,,,,,,
+                           cnd((Int)) dsp((Int)) cnd(off(log(n_dys_eff))) cnd(z.esk_dst_m) cnd(z.men_elv_300) cnd(z.men_tri_300) cnd(z.X30_BAR),,,,,,,,,,,,
+glmm_wk_smr_comm_bu_tgt        -18.34          +                        +           -1.502            -0.1833             1.4360       -0.11450,,,,,,,,,,,,
+glmm_wk_smr_comm_bu            -16.79          +                        +           -1.319            -0.4428             0.9035       -0.01412,,,,,,,,,,,,
+glmm_wk_smr_null               -12.55          +                        +                                                                      ,,,,,,,,,,,,
+glmm_wk_smr_comm_app_3         -12.81          +                        +                                                                      ,,,,,,,,,,,,
+glmm_wk_smr_comm_app_3_tgt     -12.92          +                        +                                                                      ,,,,,,,,,,,,
+glmm_wk_smr_comm_td            -12.60          +                        +                                                                      ,,,,,,,,,,,,
+glmm_wk_smr_comm_app_2         -12.91          +                        +                                                                      ,,,,,,,,,,,,
+glmm_wk_smr_comm_td_tgt        -12.76          +                        +                                                                      ,,,,,,,,,,,,
+glmm_wk_smr_comm_app_2_tgt     -12.99          +                        +                                                                      ,,,,,,,,,,,,
+                           cnd(z.X30_MF) cnd(z.X30_SPP) cnd(z.X30_TSPG) cnd(z.X30_TSPN) cnd(z.X30_WAT) cnd(z.X30_WET) cnd(scl(Gry.Wlf)) cnd(scl(Grz.Ber)),,,,,,,,,,,,
+glmm_wk_smr_comm_bu_tgt           -11.38        -0.6124          -6.051          -3.395        -0.8774         -1.256                                    ,,,,,,,,,,,,
+glmm_wk_smr_comm_bu               -11.24        -0.7130          -4.191          -3.091        -0.3389         -1.002                                    ,,,,,,,,,,,,
+glmm_wk_smr_null                                                                                                                                         ,,,,,,,,,,,,
+glmm_wk_smr_comm_app_3                                                                                                                                   ,,,,,,,,,,,,
+glmm_wk_smr_comm_app_3_tgt                                                                                                                               ,,,,,,,,,,,,
+glmm_wk_smr_comm_td                                                                                                              0.1335         2.993e-05,,,,,,,,,,,,
+glmm_wk_smr_comm_app_2                                                                                                           0.1349         3.067e-03,,,,,,,,,,,,
+glmm_wk_smr_comm_td_tgt                                                                                                          0.1342         5.922e-03,,,,,,,,,,,,
+glmm_wk_smr_comm_app_2_tgt                                                                                                       0.1359         6.942e-03,,,,,,,,,,,,
+,cnd(trg_hyd),cnd(trg_lnr),cnd(scl(Mos)),cnd(scl(Msk)),cnd(scl(Prd)),cnd(scl(Ung)),cnd(Prd:Ung),df,logLik,AICc,delta,weight
+glmm_wk_smr_comm_bu_tgt,+,+,,,,,,17,-492.647,1019.4,0,0.829
+glmm_wk_smr_comm_bu,,,,,,,,13,-498.295,1022.7,3.24,0.164
+glmm_wk_smr_null,,,,,,,,3,-512.486,1031,11.55,0.003
+glmm_wk_smr_comm_app_3,,,,,0.1135,0.3451,-19.14,6,-509.743,1031.5,12.08,0.002
+glmm_wk_smr_comm_app_3_tgt,+,+,,,0.118,0.3284,-19.04,10,-506.81,1033.7,14.24,0.001
+glmm_wk_smr_comm_td,,,,,,,,5,-512.022,1034.1,14.63,0.001
+glmm_wk_smr_comm_app_2,,,0.1678,0.2642,,,,7,-510.078,1034.2,14.75,0.001
+glmm_wk_smr_comm_td_tgt,+,+,,,,,,9,-508.864,1035.8,16.34,0
+glmm_wk_smr_comm_app_2_tgt,+,+,0.157,0.2538,,,,11,-507.176,1036.4,16.98,0
+Models ranked by AICc(x) ,,,,,,,,,,,,
+Random terms (all models): ,,,,,,,,,,,,
+  cond(1 | location_site),,,,,,,,,,,,

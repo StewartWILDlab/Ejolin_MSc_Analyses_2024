@@ -1,41 +1,37 @@
 x,,,,,
  Family: nbinom2  ( log ),,,,,
-Formula:          Caribou ~ z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET +  ,,,,,
-    z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR +  ,,,,,
-    z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_linear +  ,,,,,
-    target_hydro + offset(log(n_days_effort)) + (1 | location_site),,,,,
+Formula:          Caribou ~ z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT +      z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 +  ,,,,,
+    z.mean_tri_300 + z.esker_dist_m + target_linear + target_hydro +      offset(log(n_days_effort)) + (1 | location_site),,,,,
 Data: mod_dat_wk_summer,,,,,
 ,,,,,
-AIC,BIC,logLik,deviance,df.resid,
-1013.5,1135.9,-487.8,975.5,4605,
+     AIC      BIC   logLik deviance df.resid ,,,,,
+  1019.3   1128.8   -492.6    985.3     4607 ,,,,,
 ,,,,,
 Random effects:,,,,,
 ,,,,,
 Conditional model:,,,,,
-Groups,Name,Variance,Std.Dev.,,
-location_site,(Intercept),3.361,1.833,,
+ Groups        Name        Variance Std.Dev.,,,,,
+ location_site (Intercept) 4.837    2.199   ,,,,,
 "Number of obs: 4624, groups:  location_site, 60",,,,,
 ,,,,,
-Dispersion parameter for nbinom2 family (): 0.146 ,,,,,
+Dispersion parameter for nbinom2 family (): 0.142 ,,,,,
 ,,,,,
 Conditional model:,,,,,
 ,Estimate,Std. Error,z value,Pr(>|z|),
-(Intercept),-4.71E+03,2.69E+05,-0.018,0.98605,
-z.X300_SPPGLM,-2.44E+01,1.15E+01,-2.114,0.03454,*
-z.X300_SPPSLM,-3.76E+01,1.83E+01,-2.055,0.03992,*
-z.X300_TSPNF,-4.27E+01,2.02E+01,-2.11,0.03486,*
-z.X300_WET,-1.57E+01,7.01E+00,-2.235,0.02544,*
-z.X300_WAT,-2.15E+01,1.00E+01,-2.144,0.03203,*
-z.X300_MF,-2.15E+01,1.09E+01,-1.975,0.04823,*
-z.X300_TSPS,-1.06E+04,6.04E+05,-0.018,0.98607,
-z.X300_TSPG,-3.18E+01,1.30E+01,-2.45,0.01428,*
-z.X300_BAR,-7.94E+00,3.81E+00,-2.084,0.03714,*
-z.mean_elev_300,-5.61E-01,4.85E-01,-1.156,0.24772,
-z.mean_tri_300,1.47E+00,9.48E-01,1.55,0.12102,
-z.esker_dist_m,-9.14E-01,9.37E-01,-0.976,0.32933,
-target_linearEsker,-2.88E-02,1.20E+00,-0.024,0.98082,
-target_linearTrail,2.87E+00,9.51E-01,3.018,0.00254,**
-target_hydroShoreline,1.23E+00,6.60E-01,1.862,0.06257,.
-target_hydroWetland,-6.48E-01,7.20E-01,-0.9,0.36799,
+(Intercept),-18.3384,4.3154,-4.25,2.14E-05,***
+z.X300_SPPGLM,-0.6124,0.3818,-1.604,0.10868,
+z.X300_TSPNF,-3.3949,1.9093,-1.778,0.07539,.
+z.X300_WET,-1.2562,0.3994,-3.145,0.00166,**
+z.X300_WAT,-0.8774,0.3346,-2.622,0.00874,**
+z.X300_MF,-11.379,6.5204,-1.745,0.08096,.
+z.X300_TSPG,-6.0507,3.5792,-1.691,0.09093,.
+z.X300_BAR,-0.1145,0.2084,-0.549,0.58286,
+z.mean_elev_300,-0.1833,0.4575,-0.401,0.68859,
+z.mean_tri_300,1.4358,0.8494,1.69,0.09095,.
+z.esker_dist_m,-1.5019,0.9875,-1.521,0.12829,
+target_linearEsker,0.768,1.1137,0.69,0.49045,
+target_linearTrail,2.4173,0.8889,2.719,0.00654,**
+target_hydroShoreline,1.1682,0.6697,1.744,0.08111,.
+target_hydroWetland,-0.3352,0.701,-0.478,0.63258,
 ---,,,,,
 Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1,,,,,
