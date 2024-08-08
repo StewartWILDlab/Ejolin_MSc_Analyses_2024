@@ -22,7 +22,7 @@ range_locations <- range(location_counts$count)
 cat("Average number of locations per location_site:", avg_locations, "\n")
 cat("Standard Deviation of locations per location_site:", sd_locations, "\n")
 cat("Range of locations per location_site: from", range_locations[1], "to", range_locations[2], "\n")
-This code will provide you with the average number of locations per location_site, the standard
+#This code will provide you with the average number of locations per location_site, the standard
 
 ################################################################################
 #Distance between clusters
