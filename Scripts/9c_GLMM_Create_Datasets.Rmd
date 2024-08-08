@@ -265,6 +265,58 @@ ggplot(daily_sum, aes(x = day, y = total_daily_cr, fill = four_season)) +
 
 ```
 
+##Updated colours for thesis
+
+```{r}
+install.packages("RColorBrewer")
+library(RColorBrewer)
+```
+
+```{r}
+# Display available palettes
+display.brewer.all()
+
+# Example palette usage
+brewer.pal(n = 4, name = "Paired")
+```
+
+```{r}
+# Group by day and summarize the total Caribou count and effort
+daily_sum <- mod_dat_daily %>%
+  group_by(year = year(day), day, four_season) %>%
+  summarise(total_caribou = sum(Caribou), total_effort = sum(n_days_effort))
+
+# Define the colors for each season using specific colors from Paired
+season_colors <- c("Winter" = "#A6CEE3",  # Light Blue
+                   "Summer" = "#B2DF8A",  # Light Green
+                   "Spring" = "#CAB2D6",  # Light Purple
+                   "Fall" = "#FDBF6F")    # Light Orange
+
+# Plot the data for total Caribou count
+ggplot(daily_sum, aes(x = day, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Day",
+       y = "Total Caribou Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
+  scale_fill_manual(values = season_colors)
+
+# Calculate the total daily capture rate
+daily_sum$total_daily_cr <- daily_sum$total_caribou / daily_sum$total_effort
+
+# Plot the data for capture rate
+ggplot(daily_sum, aes(x = day, y = total_daily_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Day",
+       y = "Total caribou capture rate") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
+  scale_fill_manual(values = season_colors)
+```
+
+
 ########################################################################################################################################################################################################################################################################################################################################################################
 
 #  Multiseason, WEEKLY detections
@@ -1951,7 +2003,7 @@ summary_all <- do.call(rbind, summary_dfs)
 print(summary_all)
 
 #save table
-write.csv(summary_all, file = "Tables/GLMM_DataSet_CountandEffort_Comparison.csv", row.names = F)
+#write.csv(summary_all, file = "Tables/GLMM_DataSet_CountandEffort_Comparison.csv", row.names = F)
 ```
                                       Dataset Total_Effort Caribou_Detections Muskox_Detections Moose_Detections Gray_Wolf_Detections Grizzly_Bear_Detections
 mod_dat_wk                         mod_dat_wk        83309               2343               745              180                  130                      38
