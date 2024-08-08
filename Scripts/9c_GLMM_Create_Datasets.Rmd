@@ -38,7 +38,7 @@ z_locs <- stdize(locs, omit.cols = c("latitude","longitude","latitude_site","lon
 
 #######################################################################################################################################################################################################################################################################################################################################
 
-# Caribou Seasons
+# Delineate Caribou Seasons
 
 Rather than defining seasons in a community aspect using snowcover (which would be more suited to a multispecies analysis) I want to divide data by biologically relevant "caribou seasons". The problem here is that these seasons vary by date from year to year and from herd to herd based on GPS collar data. I have 2021-2022 dates for the Ahiak herd from GN reports but I don't have similar recent seasonal date ranges for the Bathurst/Beverly herds (date ranges used in many reports for the Bathurst herd are from a 2011 study). Do have telemetry data for the Bev/Bath caribou but it's clipped to the spatial extent of TDN. 
 
@@ -127,7 +127,7 @@ boxplot(mod_dat_daily$Caribou~mod_dat_daily$dom_habitat_lcc_hexagon,
         ylab="Habitat use")
 ```
 
-Add snow based seasons
+##Add snow based seasons
 ```{r}
 #format day as Date
 mod_dat_daily$day<-as.Date(mod_dat_daily$day)
@@ -200,7 +200,7 @@ Dec 15, 2021 - Apr 4, 2022: Winter
 Apr 5, 2022 - June 21, 2022: Spring
 June 22, 2022 - Aug 24, 2022: Summer
 
-Add simplified 4 seasons
+##Add simplified 4 seasons
 ```{r}
 # Define function to assign seasons based on date
 assign_season <- function(date) {
@@ -265,7 +265,7 @@ ggplot(daily_sum, aes(x = day, y = total_daily_cr, fill = four_season)) +
 
 ```
 
-##Updated colours for thesis
+###Updated colours for thesis
 
 ```{r}
 install.packages("RColorBrewer")
@@ -316,6 +316,72 @@ ggplot(daily_sum, aes(x = day, y = total_daily_cr, fill = four_season)) +
   scale_fill_manual(values = season_colors)
 ```
 
+##Summary Stats
+
+###Capture Rate by Season
+```{r}
+# Summarize the total capture rate by season
+seasonal_capture_rate <- daily_sum %>%
+  group_by(four_season) %>%
+  summarise(total_daily_cr = sum(total_daily_cr))
+
+print(seasonal_capture_rate)
+
+```
+
+###Effort by season
+```{r}
+# Summarize the total effort by season
+seasonal_effort <- daily_sum %>%
+  group_by(four_season) %>%
+  summarise(total_effort = sum(total_effort))
+
+print(seasonal_effort)
+
+#calculate mean daily effort by season
+seasonal_mean_effort <- mod_dat_daily %>% 
+  group_by(four_season) %>% 
+  summarise(effort_Mean = mean(n_days_effort)) %>% 
+
+print(seasonal_mean_effort)
+
+```
+
+###Plot daily effort
+```{r}
+# Summarize total days effort for each week
+total_days_effort <- mod_dat_daily %>%
+  group_by(day, four_season) %>%
+  summarise(total_effort = sum(n_days_effort), .groups = 'drop')
+
+print(total_days_effort)
+
+# Create the bar plot with colors based on the 'four_season' column
+ggplot(total_days_effort, aes(x = day, y = total_effort, fill = four_season)) +
+  geom_bar(stat = "identity") +  # Bar plot with black outlines
+  scale_fill_manual(values = season_colors) +     # Apply the season colors
+  labs(fill = "Season",
+       x = "Day of Year",
+       y = "Total Effort (Camera Days)") +
+  theme_minimal() +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#try out a line plot
+ggplot(total_days_effort, aes(x = day, y = total_effort)) +
+  geom_line(aes(color=four_season)) +  # Line plot
+  geom_point(aes(shape=four_season, color=four_season), size=2) +  # Optional: Add points to the line plot
+  scale_color_manual(values = season_colors) +
+  labs(color = "Season",
+       shape = "Season",
+       x = "Day",
+       y = "Total Effort (Days)") +
+  theme_minimal() +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
 
 ########################################################################################################################################################################################################################################################################################################################################################################
 
@@ -342,7 +408,7 @@ boxplot(mod_dat_wk$Caribou~mod_dat_wk$dom_habitat_lcc_hexagon,
         ylab="Habitat use")
 ```
 
-create snow based seasons
+## Add snow based seasons
 ```{r}
 # Lets create a new column and give it the value summer
 mod_dat_wk$snow_season <- "summer"
@@ -415,7 +481,7 @@ Dec 20, 2021 - Apr 4, 2022: Winter
 Apr 11, 2022 - June 21, 2022: Spring
 June 22, 2022 - Aug 24, 2022: Summer
 
-Create Caribou-centric Seasons
+## Add Caribou-centric Seasons
 ```{r}
 # Let's create a new column for the four seasons based on the specified date ranges
 mod_dat_wk$four_season <- "Summer"
@@ -447,7 +513,7 @@ weekly_sum <- mod_dat_wk %>%
   group_by(week_year, four_season) %>%
   summarise(total_caribou = sum(Caribou), total_effort = sum(n_days_effort))
 
-# Create capture rate per 100 days
+# Create capture rate per 7 days
 weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
 
 # Plot the count data with color based on the 'four_season' column
@@ -470,6 +536,99 @@ ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) 
   scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
 ```
+
+##Summary Stats
+
+###Capture Rate by Season
+```{r}
+# Summarize the total capture rate by season
+seasonal_capture_rate <- weekly_sum %>%
+  group_by(four_season) %>%
+  summarise(total_weekly_cr = sum(total_weekly_cr))
+
+print(seasonal_capture_rate)
+
+```
+
+###Effort by season
+```{r}
+# Summarize the total effort by season
+seasonal_effort_wk <- weekly_sum %>%
+  group_by(four_season) %>%
+  summarise(total_effort = sum(total_effort))
+
+print(seasonal_effort_wk)
+
+#calculate mean weekly effort by season
+seasonal_mean_effort_wk <- mod_dat_wk %>% 
+  group_by(four_season) %>% 
+  summarise(effort_Mean = mean(n_days_effort)) 
+
+print(seasonal_mean_effort_wk)
+
+```
+
+###Effort by Month
+```{r}
+# Let's create a new column for the month/year based on the specified date ranges
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2021-07-29") & mod_dat_wk$week_year <= as.Date("2021-08-31")] <- "2021-08"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2021-09-01") & mod_dat_wk$week_year <= as.Date("2021-09-30")] <- "2021-09"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2021-10-01") & mod_dat_wk$week_year <= as.Date("2021-10-31")] <- "2021-10"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2021-11-01") & mod_dat_wk$week_year <= as.Date("2021-11-30")] <- "2021-11"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2021-12-01") & mod_dat_wk$week_year <= as.Date("2021-12-31")] <- "2021-12"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2022-01-01") & mod_dat_wk$week_year <= as.Date("2022-01-31")] <- "2022-01"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2022-02-01") & mod_dat_wk$week_year <= as.Date("2022-02-28")] <- "2022-02"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2022-03-01") & mod_dat_wk$week_year <= as.Date("2022-03-31")] <- "2022-03"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2022-04-01") & mod_dat_wk$week_year <= as.Date("2022-04-30")] <- "2022-04"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2022-05-01") & mod_dat_wk$week_year <= as.Date("2022-05-31")] <- "2022-05"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2022-06-01") & mod_dat_wk$week_year <= as.Date("2022-06-30")] <- "2022-06"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2022-07-01") & mod_dat_wk$week_year <= as.Date("2022-07-31")] <- "2022-07"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2022-08-01") & mod_dat_wk$week_year <= as.Date("2022-08-31")] <- "2022-08"
+
+# Get the column names
+column_names <- names(mod_dat_wk)
+
+# Reorder the columns
+new_column_order <- c(column_names[1:5], "month", column_names[6:length(column_names)])
+
+# Create the reordered data frame
+mod_dat_wk <- mod_dat_wk[, new_column_order]
+
+# Make it a factor
+mod_dat_wk <- mod_dat_wk %>% 
+            mutate_if(is.character, as.factor)
+
+#calculate mean weekly effort by month/year
+monthly_mean_effort_wk <- mod_dat_wk %>% 
+  group_by(month) %>% 
+  summarise(effort_Mean = mean(n_days_effort)) 
+
+print(monthly_mean_effort_wk)
+```
+
+##Plot weekly effort
+```{r}
+# Summarize total days effort for each week
+total_weeks_effort <- mod_dat_wk %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_effort = sum(n_days_effort), .groups = 'drop')
+
+# Convert 'week_year' to Date format if not already done
+total_weeks_effort$week_year <- as.Date(total_weeks_effort$week_year, format = "%Y-%m-%d")
+
+# Create the bar plot with colors based on the 'four_season' column
+ggplot(total_weeks_effort, aes(x = week_year, y = total_effort, fill = four_season)) +
+  geom_bar(stat = "identity") +  # Bar plot with black outlines
+  scale_fill_manual(values = season_colors) +     # Apply the season colors
+  labs(fill = "Season",
+       x = "Week of Year",
+       y = "Total Effort (Camera Days)") +
+  theme_minimal() +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +  # Format the x-axis for weekly data
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
 
 ##Consolidate Ungulates and Predators
 ```{r}
@@ -2003,20 +2162,30 @@ summary_all <- do.call(rbind, summary_dfs)
 print(summary_all)
 
 #save table
-#write.csv(summary_all, file = "Tables/GLMM_DataSet_CountandEffort_Comparison.csv", row.names = F)
+write.csv(summary_all, file = "Tables/GLMM_DataSet_CountandEffort_Comparison.csv", row.names = F)
 ```
-                                      Dataset Total_Effort Caribou_Detections Muskox_Detections Moose_Detections Gray_Wolf_Detections Grizzly_Bear_Detections
-mod_dat_wk                         mod_dat_wk        83309               2343               745              180                  130                      38
-mod_dat_wk_summer           mod_dat_wk_summer        30002                370               599               97                   42                      25
-mod_dat_wk_fall               mod_dat_wk_fall        12490               1632                53               13                   34                       0
-mod_dat_wk_winter           mod_dat_wk_winter        19238                223                22               22                   15                       0
-mod_dat_wk_spri               mod_dat_wk_spri        21579                118                71               48                   39                      13
-mod_dat_wk_cbou               mod_dat_wk_cbou        40039               2343               212               29                   57                      37
-mod_dat_wk_cbou_summer mod_dat_wk_cbou_summer        14733                370               180               19                    6                      25
-mod_dat_wk_cbou_fall     mod_dat_wk_cbou_fall         5971               1632                11                2                   27                       0
-mod_dat_wk_cbou_winter mod_dat_wk_cbou_winter         9226                223                 3                1                   13                       0
-mod_dat_wk_cbou_spri     mod_dat_wk_cbou_spri        10109                118                18                7                   11                      12
-
+                                      Dataset Total_Effort Caribou_Detections Muskox_Detections Moose_Detections
+mod_dat_wk                         mod_dat_wk        83309               2348               746              180
+mod_dat_wk_summer           mod_dat_wk_summer        30002                372               599               97
+mod_dat_wk_fall               mod_dat_wk_fall        12490               1633                54               13
+mod_dat_wk_winter           mod_dat_wk_winter        19238                224                22               22
+mod_dat_wk_spri               mod_dat_wk_spri        21579                119                71               48
+mod_dat_wk_cbou               mod_dat_wk_cbou        40039               2348               212               29
+mod_dat_wk_cbou_summer mod_dat_wk_cbou_summer        14733                372               180               19
+mod_dat_wk_cbou_fall     mod_dat_wk_cbou_fall         5971               1633                11                2
+mod_dat_wk_cbou_winter mod_dat_wk_cbou_winter         9226                224                 3                1
+mod_dat_wk_cbou_spri     mod_dat_wk_cbou_spri        10109                119                18                7
+                       Gray_Wolf_Detections Grizzly_Bear_Detections
+mod_dat_wk                              130                      38
+mod_dat_wk_summer                        42                      25
+mod_dat_wk_fall                          34                       0
+mod_dat_wk_winter                        15                       0
+mod_dat_wk_spri                          39                      13
+mod_dat_wk_cbou                          57                      37
+mod_dat_wk_cbou_summer                    6                      25
+mod_dat_wk_cbou_fall                     27                       0
+mod_dat_wk_cbou_winter                   13                       0
+mod_dat_wk_cbou_spri                     11                      12
 
 #SAVE DATA AS CSV
 
