@@ -548,6 +548,12 @@ seasonal_capture_rate <- weekly_sum %>%
 
 print(seasonal_capture_rate)
 
+# Calculate the average weekly capture rate by season
+avg_weekly_cr_season <- weekly_sum %>%
+  group_by(four_season) %>%
+  summarise(avg_weekly_cr = mean(total_weekly_cr))
+
+print(avg_weekly_cr_season)
 ```
 
 ###Effort by season
@@ -606,7 +612,20 @@ monthly_mean_effort_wk <- mod_dat_wk %>%
 print(monthly_mean_effort_wk)
 ```
 
-##Plot weekly effort
+###Capture Rate by Month 
+```{r}
+# Calculate the average weekly capture rate by month
+avg_weekly_cr_month <- mod_dat_wk %>%
+  group_by(month) %>%
+  summarise(total_caribou = sum(Caribou), total_effort = sum(n_days_effort)) %>%
+  mutate(avg_weekly_cr = (total_caribou / total_effort) * 7)
+
+print(avg_weekly_cr_month)
+
+```
+
+
+###Plot weekly effort
 ```{r}
 # Summarize total days effort for each week
 total_weeks_effort <- mod_dat_wk %>%
