@@ -42,9 +42,15 @@ levels(mod_dat_wk$target_linear)
 The smallest possible value of VIF is one (absence of multicollinearity). As a rule of thumb, a VIF value that exceeds 5 or 10 indicates a problematic amount of collinearity (James et al. 2014). Removing the dominant landcover (SPPSLM) brings VIF down to about 1 for other landcovers in every single seasonal and spatial data set.
 
 ```{r}
+#model with SPPSLM (highest proportion of landcovers at both spatial extents) removed
 model1<- glm(Caribou ~ z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_TSPS + z.X300_BAR, data=mod_dat_wk, family = "poisson")
 
 vif(model1)
+
+#model with SPPSLM 
+model2<- glm(Caribou ~ z.X300_SPPSLM + z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_TSPS + z.X300_BAR, data=mod_dat_wk, family = "poisson")
+
+vif(model2)
 ```
 
 
@@ -513,7 +519,7 @@ Compare with the model above. If wolf and griz have a strong effect here but ung
 
 #### Bottom Up
 
-#####NOTE: Removed TSPS due to very large standard errors. Removal resulted in normal values across remaining landcovers.
+#####NOTE: Removed TSPS due to very large standard errors. Checked VIF and very high. Removal resulted in normal values across remaining landcovers.
 
 wo tgt
 ```{r}
@@ -2916,10 +2922,10 @@ model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spri_lcc_2, glmm_wk_cbou_spri_dem
 ###Save Model Selection
 ```{r}
 # Capture the model selection
-summary_output <- capture.output(model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_bu_tgt, glmm_wk_cbou_spr_comm_td_tgt, glmm_wk_cbou_spr_comm_app_2, glmm_wk_cbou_spr_comm_app_3, glmm_wk_cbou_spr_comm_app_3_tgt))
+#summary_output <- capture.output(model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_bu_tgt, glmm_wk_cbou_spr_comm_td_tgt, glmm_wk_cbou_spr_comm_app_2, glmm_wk_cbou_spr_comm_app_3, glmm_wk_cbou_spr_comm_app_3_tgt))
 
 # Save the model selection to a CSV file
-write.csv(summary_output, file = "Tables/local_spr_models_fnl.csv", row.names = FALSE)
+#write.csv(summary_output, file = "Tables/local_spr_models_fnl.csv", row.names = FALSE)
 ```
 
 ###Save Top Model
@@ -2931,13 +2937,15 @@ write.csv(summary_output, file = "Tables/local_spr_models_fnl.csv", row.names = 
 #write.csv(summary_output, file = "Tables/local_spri_lcc_2.csv", row.names = FALSE)
 ```
 
+
+#11. Proportion of cameras detected
 ```{r}
 #cluster analysis
 tdn_clust_summaries_full<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_full.csv")
 
 # Specify the dataframe and species columns, excluding the first four columns
 df <- tdn_clust_summaries_full
-species_columns <- colnames(df)[7:76]  # Exclude the first two columns
+species_columns <- colnames(df)[3:72]  # Exclude the first columns
 
 # Count the number of sampling sites where each species was detected
 species_detected_sites <- colSums(df[, species_columns] > 0)
@@ -2954,4 +2962,245 @@ summary_df <- data.frame(Species = names(species_proportions), Proportion_Detect
 # Print the new summary dataframe
 print(summary_df)
 ```
+
+#12. Species co-occurrences
+
+##Reg, Multi-season
+```{r}
+# Select only the species detection columns by explicitly naming them
+co_occurrences <- mod_dat_wk %>%
+  dplyr::select(Caribou, Moose, Muskox, Gray.Wolf, Grizzly.Bear, Predators, Ungulates) %>%
+  mutate(across(everything(), ~ . >= 1))
+
+# Function to count co-occurrences for each species pair
+count_co_occurrences <- function(df, species1, species2) {
+  sum(df[[species1]] & df[[species2]])
+}
+
+# Get all unique species pairs
+species <- c("Caribou", "Moose", "Muskox", "Gray.Wolf", "Grizzly.Bear", "Predators", "Ungulates")
+pairs <- combn(species, 2, simplify = FALSE)
+
+# Calculate co-occurrences for each pair
+co_occurrence_counts <- sapply(pairs, function(pair) {
+  count_co_occurrences(co_occurrences, pair[1], pair[2])
+})
+
+# Format the results into a readable data frame
+results <- data.frame(
+  Species1 = sapply(pairs, `[`, 1),
+  Species2 = sapply(pairs, `[`, 2),
+  Co_Occurrences = co_occurrence_counts
+)
+
+# View the results
+print(results)
+```
+
+##Loc, Multi-season
+```{r}
+# Select only the species detection columns by explicitly naming them
+co_occurrences <- mod_dat_wk_cbou %>%
+  dplyr::select(Caribou, Moose, Muskox, Gray.Wolf, Grizzly.Bear, Predators, Ungulates) %>%
+  mutate(across(everything(), ~ . >= 1))
+
+# Function to count co-occurrences for each species pair
+count_co_occurrences <- function(df, species1, species2) {
+  sum(df[[species1]] & df[[species2]])
+}
+
+# Get all unique species pairs
+species <- c("Caribou", "Moose", "Muskox", "Gray.Wolf", "Grizzly.Bear", "Predators", "Ungulates")
+pairs <- combn(species, 2, simplify = FALSE)
+
+# Calculate co-occurrences for each pair
+co_occurrence_counts <- sapply(pairs, function(pair) {
+  count_co_occurrences(co_occurrences, pair[1], pair[2])
+})
+
+# Format the results into a readable data frame
+results <- data.frame(
+  Species1 = sapply(pairs, `[`, 1),
+  Species2 = sapply(pairs, `[`, 2),
+  Co_Occurrences = co_occurrence_counts
+)
+
+# View the results
+print(results)
+```
+
+##Loc, Summer
+```{r}
+# Select only the species detection columns by explicitly naming them
+co_occurrences <- mod_dat_wk_cbou_summer %>%
+  dplyr::select(Caribou, Moose, Muskox, Gray.Wolf, Grizzly.Bear, Predators, Ungulates) %>%
+  mutate(across(everything(), ~ . >= 1))
+
+# Function to count co-occurrences for each species pair
+count_co_occurrences <- function(df, species1, species2) {
+  sum(df[[species1]] & df[[species2]])
+}
+
+# Get all unique species pairs
+species <- c("Caribou", "Moose", "Muskox", "Gray.Wolf", "Grizzly.Bear", "Predators", "Ungulates")
+pairs <- combn(species, 2, simplify = FALSE)
+
+# Calculate co-occurrences for each pair
+co_occurrence_counts <- sapply(pairs, function(pair) {
+  count_co_occurrences(co_occurrences, pair[1], pair[2])
+})
+
+# Format the results into a readable data frame
+results <- data.frame(
+  Species1 = sapply(pairs, `[`, 1),
+  Species2 = sapply(pairs, `[`, 2),
+  Co_Occurrences = co_occurrence_counts
+)
+
+# View the results
+print(results)
+```
+
+##Loc, Fall
+```{r}
+# Select only the species detection columns by explicitly naming them
+co_occurrences <- mod_dat_wk %>%
+  dplyr::select(Caribou, Moose, Muskox, Gray.Wolf, Grizzly.Bear, Predators, Ungulates) %>%
+  mutate(across(everything(), ~ . >= 1))
+
+# Function to count co-occurrences for each species pair
+count_co_occurrences <- function(df, species1, species2) {
+  sum(df[[species1]] & df[[species2]])
+}
+
+# Get all unique species pairs
+species <- c("Caribou", "Moose", "Muskox", "Gray.Wolf", "Grizzly.Bear", "Predators", "Ungulates")
+pairs <- combn(species, 2, simplify = FALSE)
+
+# Calculate co-occurrences for each pair
+co_occurrence_counts <- sapply(pairs, function(pair) {
+  count_co_occurrences(co_occurrences, pair[1], pair[2])
+})
+
+# Format the results into a readable data frame
+results <- data.frame(
+  Species1 = sapply(pairs, `[`, 1),
+  Species2 = sapply(pairs, `[`, 2),
+  Co_Occurrences = co_occurrence_counts
+)
+
+# View the results
+print(results)
+```
+
+
+##Loc, Winter
+
+no predator:ungulate or caribou:ungulate in the local, winter. Caribou:Wolf/ caribou:predator n=4. 
+```{r}
+# Select only the species detection columns by explicitly naming them
+co_occurrences <- mod_dat_wk_cbou_winter %>%
+  dplyr::select(Caribou, Moose, Muskox, Gray.Wolf, Grizzly.Bear, Predators, Ungulates) %>%
+  mutate(across(everything(), ~ . >= 1))
+
+# Function to count co-occurrences for each species pair
+count_co_occurrences <- function(df, species1, species2) {
+  sum(df[[species1]] & df[[species2]])
+}
+
+# Get all unique species pairs
+species <- c("Caribou", "Moose", "Muskox", "Gray.Wolf", "Grizzly.Bear", "Predators", "Ungulates")
+pairs <- combn(species, 2, simplify = FALSE)
+
+# Calculate co-occurrences for each pair
+co_occurrence_counts <- sapply(pairs, function(pair) {
+  count_co_occurrences(co_occurrences, pair[1], pair[2])
+})
+
+# Format the results into a readable data frame
+results <- data.frame(
+  Species1 = sapply(pairs, `[`, 1),
+  Species2 = sapply(pairs, `[`, 2),
+  Co_Occurrences = co_occurrence_counts
+)
+
+# View the results
+print(results)
+```
+
+##Loc, Spring
+
+no caribou:ungulate or caribou:predator in the local spring. n=3 predator:ungulate, muskox:wolf =2, moose:grizzly = 1 
+```{r}
+# Select only the species detection columns by explicitly naming them
+co_occurrences <- mod_dat_wk_cbou_spri %>%
+  dplyr::select(Caribou, Moose, Muskox, Gray.Wolf, Grizzly.Bear, Predators, Ungulates) %>%
+  mutate(across(everything(), ~ . >= 1))
+
+# Function to count co-occurrences for each species pair
+count_co_occurrences <- function(df, species1, species2) {
+  sum(df[[species1]] & df[[species2]])
+}
+
+# Get all unique species pairs
+species <- c("Caribou", "Moose", "Muskox", "Gray.Wolf", "Grizzly.Bear", "Predators", "Ungulates")
+pairs <- combn(species, 2, simplify = FALSE)
+
+# Calculate co-occurrences for each pair
+co_occurrence_counts <- sapply(pairs, function(pair) {
+  count_co_occurrences(co_occurrences, pair[1], pair[2])
+})
+
+# Format the results into a readable data frame
+results <- data.frame(
+  Species1 = sapply(pairs, `[`, 1),
+  Species2 = sapply(pairs, `[`, 2),
+  Co_Occurrences = co_occurrence_counts
+)
+
+# View the results
+print(results)
+```
+
+#13. Targets by species
+
+looking at targets and species for the local/spring extent since that's where we got convergence issues in species/target models (but not bottom up target)
+```{r}
+# Count occurrences for target_linear
+species_linear_counts <- mod_dat_wk_cbou_spri %>%
+  # Filter rows where species have at least one detection
+  filter(Caribou >= 1 | Moose >= 1 | Muskox >= 1 | Gray.Wolf >= 1 | Grizzly.Bear >= 1) %>%
+  # Pivot the data longer to analyze each species individually
+  pivot_longer(cols = c(Caribou, Moose, Muskox, Gray.Wolf, Grizzly.Bear), 
+               names_to = "Species", 
+               values_to = "Detections") %>%
+  # Keep rows where species detections are greater than or equal to 1
+  filter(Detections >= 1) %>%
+  # Group by species and target_linear
+  group_by(Species, target_linear) %>%
+  # Count the number of occurrences for each combination
+  summarise(Count = n(), .groups = 'drop')
+
+# View the results for target_linear
+print(species_linear_counts)
+
+# Count occurrences for target_hydro
+species_hydro_counts <- mod_dat_wk %>%
+  # Filter rows where species have at least one detection
+  filter(Caribou >= 1 | Moose >= 1 | Muskox >= 1 | Gray.Wolf >= 1 | Grizzly.Bear >= 1) %>%
+  # Pivot the data longer to analyze each species individually
+  pivot_longer(cols = c(Caribou, Moose, Muskox, Gray.Wolf, Grizzly.Bear), 
+               names_to = "Species", 
+               values_to = "Detections") %>%
+  # Keep rows where species detections are greater than or equal to 1
+  filter(Detections >= 1) %>%
+  # Group by species and target_hydro
+  group_by(Species, target_hydro) %>%
+  # Count the number of occurrences for each combination
+  summarise(Count = n(), .groups = 'drop')
+
+# View the results for target_hydro
+print(species_hydro_counts)
+```
+
 

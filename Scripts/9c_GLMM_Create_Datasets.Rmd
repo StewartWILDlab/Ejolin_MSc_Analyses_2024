@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 # Check you have them and load them
-list.of.packages <- c("kableExtra", "tidyr", "ggplot2", "gridExtra", "dplyr", "Hmsc", "jtools", "lubridate", "corrplot", "MuMIn","stringr","sf","raster","leaflet", "tidyverse","htmlwidgets","webshot", "purrr", "magick","forcats","multcomp", "reshape2", "lme4", "tidyr", "stats")
+list.of.packages <- c("kableExtra", "tidyr", "ggplot2", "gridExtra", "dplyr", "Hmsc", "jtools", "lubridate", "corrplot", "MuMIn","stringr","sf","raster","leaflet", "tidyverse","htmlwidgets","webshot", "purrr", "magick","forcats","multcomp", "reshape2", "lme4", "tidyr", "stats","RColorBrewer")
 
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages)
@@ -268,19 +268,6 @@ ggplot(daily_sum, aes(x = day, y = total_daily_cr, fill = four_season)) +
 ###Updated colours for thesis
 
 ```{r}
-install.packages("RColorBrewer")
-library(RColorBrewer)
-```
-
-```{r}
-# Display available palettes
-display.brewer.all()
-
-# Example palette usage
-brewer.pal(n = 4, name = "Paired")
-```
-
-```{r}
 # Group by day and summarize the total Caribou count and effort
 daily_sum <- mod_dat_daily %>%
   group_by(year = year(day), day, four_season) %>%
@@ -295,7 +282,8 @@ season_colors <- c("Winter" = "#A6CEE3",  # Light Blue
 # Plot the data for total Caribou count
 ggplot(daily_sum, aes(x = day, y = total_caribou, fill = four_season)) +
   geom_bar(stat = "identity", position = "dodge") +
-  labs(x = "Day",
+  labs(fill = "Season", 
+       x = "Day",
        y = "Total Caribou Count") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
@@ -308,8 +296,9 @@ daily_sum$total_daily_cr <- daily_sum$total_caribou / daily_sum$total_effort
 # Plot the data for capture rate
 ggplot(daily_sum, aes(x = day, y = total_daily_cr, fill = four_season)) +
   geom_bar(stat = "identity", position = "dodge") +
-  labs(x = "Day",
-       y = "Total caribou capture rate") +
+  labs(fill = "Season",
+       x = "Day",
+       y = "Caribou detection rate") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
   scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
@@ -341,7 +330,7 @@ print(seasonal_effort)
 #calculate mean daily effort by season
 seasonal_mean_effort <- mod_dat_daily %>% 
   group_by(four_season) %>% 
-  summarise(effort_Mean = mean(n_days_effort)) %>% 
+  summarise(effort_Mean = mean(n_days_effort)) 
 
 print(seasonal_mean_effort)
 
@@ -439,7 +428,7 @@ weekly_sum <- mod_dat_wk %>%
   group_by(week_year, snow_season) %>%
   summarise(total_caribou = sum(Caribou),total_effort = sum(n_days_effort))
 
-#create capture rate per 100 days
+#create capture rate 
 weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
 
 # Plot the count data with color based on the 'season' column
@@ -665,7 +654,7 @@ weekly_sum <- mod_dat_wk %>%
   group_by(week_year, snow_season) %>%
   summarise(total_caribou = sum(Muskox),total_effort = sum(n_days_effort))
 
-#create capture rate per 100 days
+#create capture rate 
 weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
 
 # Plot the count data with color based on the 'season' column
@@ -694,7 +683,7 @@ weekly_sum <- mod_dat_wk %>%
   group_by(week_year, four_season) %>%
   summarise(total_caribou = sum(Muskox), total_effort = sum(n_days_effort))
 
-# Create capture rate per 100 days
+# Create capture rate  
 weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
 
 # Plot the count data with color based on the 'four_season' column
@@ -725,7 +714,7 @@ weekly_sum <- mod_dat_wk %>%
   group_by(week_year, snow_season) %>%
   summarise(total_caribou = sum(Moose),total_effort = sum(n_days_effort))
 
-#create capture rate per 100 days
+#create capture rate 
 weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
 
 # Plot the count data with color based on the 'season' column
@@ -754,7 +743,7 @@ weekly_sum <- mod_dat_wk %>%
   group_by(week_year, four_season) %>%
   summarise(total_caribou = sum(Moose), total_effort = sum(n_days_effort))
 
-# Create capture rate per 100 days
+# Create capture rate 
 weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
 
 # Plot the count data with color based on the 'four_season' column
@@ -785,7 +774,7 @@ weekly_sum <- mod_dat_wk %>%
   group_by(week_year, snow_season) %>%
   summarise(total_caribou = sum(Gray.Wolf),total_effort = sum(n_days_effort))
 
-#create capture rate per 100 days
+#create capture rate 
 weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
 
 # Plot the count data with color based on the 'season' column
@@ -814,7 +803,7 @@ weekly_sum <- mod_dat_wk %>%
   group_by(week_year, four_season) %>%
   summarise(total_caribou = sum(Gray.Wolf), total_effort = sum(n_days_effort))
 
-# Create capture rate per 100 days
+# Create capture rate 
 weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
 
 # Plot the count data with color based on the 'four_season' column
@@ -845,7 +834,7 @@ weekly_sum <- mod_dat_wk %>%
   group_by(week_year, snow_season) %>%
   summarise(total_caribou = sum(Grizzly.Bear),total_effort = sum(n_days_effort))
 
-#create capture rate per 100 days
+#create capture rate 
 weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
 
 # Plot the count data with color based on the 'season' column
@@ -874,7 +863,7 @@ weekly_sum <- mod_dat_wk %>%
   group_by(week_year, four_season) %>%
   summarise(total_caribou = sum(Grizzly.Bear), total_effort = sum(n_days_effort))
 
-# Create capture rate per 100 days
+# Create capture rate 
 weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
 
 # Plot the count data with color based on the 'four_season' column
@@ -905,7 +894,7 @@ weekly_sum <- mod_dat_wk %>%
   group_by(week_year, snow_season) %>%
   summarise(total_caribou = sum(Ungulates),total_effort = sum(n_days_effort))
 
-#create capture rate per 100 days
+#create capture rate 
 weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
 
 # Plot the count data with color based on the 'season' column
@@ -934,7 +923,7 @@ weekly_sum <- mod_dat_wk %>%
   group_by(week_year, four_season) %>%
   summarise(total_caribou = sum(Ungulates), total_effort = sum(n_days_effort))
 
-# Create capture rate per 100 days
+# Create capture rate 
 weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
 
 # Plot the count data with color based on the 'four_season' column
@@ -965,7 +954,7 @@ weekly_sum <- mod_dat_wk %>%
   group_by(week_year, snow_season) %>%
   summarise(total_caribou = sum(Predators),total_effort = sum(n_days_effort))
 
-#create capture rate per 100 days
+#create capture rate 
 weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
 
 # Plot the count data with color based on the 'season' column
@@ -994,7 +983,7 @@ weekly_sum <- mod_dat_wk %>%
   group_by(week_year, four_season) %>%
   summarise(total_caribou = sum(Predators), total_effort = sum(n_days_effort))
 
-# Create capture rate per 100 days
+# Create capture rate 
 weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
 
 # Plot the count data with color based on the 'four_season' column
@@ -1563,7 +1552,7 @@ weekly_sum <- mod_dat_wk_cbou %>%
   group_by(week_year, snow_season) %>%
   summarise(total_caribou = sum(Caribou),total_effort = sum(n_days_effort))
 
-#create capture rate per 100 days
+#create capture rate 
 weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
 
 # Plot the count data with color based on the 'season' column
@@ -1592,7 +1581,7 @@ weekly_sum <- mod_dat_wk_cbou %>%
   group_by(week_year, four_season) %>%
   summarise(total_caribou = sum(Caribou), total_effort = sum(n_days_effort))
 
-# Create capture rate per 100 days
+# Create capture rate 
 weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
 
 # Plot the count data with color based on the 'four_season' column
@@ -1623,7 +1612,7 @@ weekly_sum <- mod_dat_wk_cbou %>%
   group_by(week_year, snow_season) %>%
   summarise(total_caribou = sum(Muskox),total_effort = sum(n_days_effort))
 
-#create capture rate per 100 days
+#create capture rate 
 weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
 
 # Plot the count data with color based on the 'season' column
@@ -1652,7 +1641,7 @@ weekly_sum <- mod_dat_wk_cbou %>%
   group_by(week_year, four_season) %>%
   summarise(total_caribou = sum(Muskox), total_effort = sum(n_days_effort))
 
-# Create capture rate per 100 days
+# Create capture rate 
 weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
 
 # Plot the count data with color based on the 'four_season' column
@@ -1683,7 +1672,7 @@ weekly_sum <- mod_dat_wk_cbou %>%
   group_by(week_year, snow_season) %>%
   summarise(total_caribou = sum(Moose),total_effort = sum(n_days_effort))
 
-#create capture rate per 100 days
+#create capture rate 
 weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
 
 # Plot the count data with color based on the 'season' column
@@ -1712,7 +1701,7 @@ weekly_sum <- mod_dat_wk_cbou %>%
   group_by(week_year, four_season) %>%
   summarise(total_caribou = sum(Moose), total_effort = sum(n_days_effort))
 
-# Create capture rate per 100 days
+# Create capture rate 
 weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
 
 # Plot the count data with color based on the 'four_season' column
@@ -1743,7 +1732,7 @@ weekly_sum <- mod_dat_wk_cbou %>%
   group_by(week_year, snow_season) %>%
   summarise(total_caribou = sum(Gray.Wolf),total_effort = sum(n_days_effort))
 
-#create capture rate per 100 days
+#create capture rate 
 weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
 
 # Plot the count data with color based on the 'season' column
@@ -1772,7 +1761,7 @@ weekly_sum <- mod_dat_wk_cbou %>%
   group_by(week_year, four_season) %>%
   summarise(total_caribou = sum(Gray.Wolf), total_effort = sum(n_days_effort))
 
-# Create capture rate per 100 days
+# Create capture rate 
 weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
 
 # Plot the count data with color based on the 'four_season' column
@@ -1803,7 +1792,7 @@ weekly_sum <- mod_dat_wk_cbou %>%
   group_by(week_year, snow_season) %>%
   summarise(total_caribou = sum(Grizzly.Bear),total_effort = sum(n_days_effort))
 
-#create capture rate per 100 days
+#create capture rate 
 weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
 
 # Plot the count data with color based on the 'season' column
@@ -1832,7 +1821,7 @@ weekly_sum <- mod_dat_wk_cbou %>%
   group_by(week_year, four_season) %>%
   summarise(total_caribou = sum(Grizzly.Bear), total_effort = sum(n_days_effort))
 
-# Create capture rate per 100 days
+# Create capture rate 
 weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
 
 # Plot the count data with color based on the 'four_season' column

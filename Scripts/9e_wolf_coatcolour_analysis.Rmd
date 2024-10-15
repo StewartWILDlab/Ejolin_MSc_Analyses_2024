@@ -1,0 +1,257 @@
+---
+title: "9e_wolf_coatcolour_analysis"
+output: html_document
+date: "2024-09-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load packages
+
+```{r}
+# Check you have them and load them
+list.of.packages <- c("kableExtra", "tidyr", "ggplot2", "gridExtra", "dplyr", "Hmsc", "jtools", "lubridate", "corrplot", "MuMIn","stringr","sf","raster","leaflet", "tidyverse","htmlwidgets","webshot", "purrr", "magick","forcats","multcomp", "reshape2", "lme4", "tidyr", "stats")
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+lapply(list.of.packages, require, character.only = TRUE)
+```
+
+#  Prepare Location Data
+
+```{r}
+locs <- read.csv("Processed_Data/TDN_camera_locations_and_covariates_cleaned.csv", header=T)
+
+# Convert to categorical factors
+locs <- locs %>% 
+            mutate_if(is.character,as.factor)
+
+# You should also standardize your covariates - it helps models coverage and facillitates comparison of effects sizes
+
+#NEED TO RUN THIS SO LAT/LONG DONT GET STANDARDIZED
+#non response variable species should be scaled but that can manually be done in the GLMM formulas
+library(MuMIn)
+z_locs <- stdize(locs, omit.cols = c("latitude","longitude","latitude_site","longitude_site","spatial_scale"))
+```
+
+#Prepare Wolf Data
+
+```{r}
+wolf_indv <- read.csv("Processed_Data/wolf_coatcolour_individuals.csv", header=T)
+
+# Perform the left join based on the 'location' column
+wolf_indv_with_covariates <- wolf_indv %>%
+  left_join(z_locs, by = "location")
+
+# View the first few rows of the resulting data frame to verify the join
+head(wolf_indv_with_covariates)
+```
+
+# Summarize Data by Location
+```{r}
+# Step 1: Count occurrences of each coat_colour per location
+counted_df <- wolf_indv_with_covariates %>%
+  group_by(location, coat_colour) %>%
+  summarise(count = n(), .groups = 'drop')
+
+# Step 2: Pivot to wide format with separate columns for each coat_colour
+pivot_df <- counted_df %>%
+  pivot_wider(names_from = coat_colour, values_from = count, values_fill = 0)
+
+# Step 3: Remove the 'day', 'comment', and 'coat_colour' columns and keep distinct rows for each location
+wolf_indv_cleaned <- wolf_indv_with_covariates %>%
+  dplyr::select(-day, -comment, -coat_colour) %>% # Remove unnecessary columns
+  distinct(location, .keep_all = TRUE) # Keep one row per location
+
+# Step 4: Join the pivoted data with the cleaned data frame to keep covariates
+summary_with_covariates <- wolf_indv_cleaned %>%
+  left_join(pivot_df, by = "location")
+
+# Step 5: Reorder columns to place Dark, Light, and Unknown as 2nd, 3rd, and 4th columns
+summary_with_covariates <- summary_with_covariates %>%
+  dplyr::select(location, Dark, Light, Unknown, everything())
+
+# View the final result
+print(summary_with_covariates)
+```
+
+#Summarize Data by Cluster
+```{r}
+# Step 1: Group by location_site and summarize the total counts
+summary_location_site <- summary_with_covariates %>%
+  group_by(location_site) %>%
+  summarise(
+    total_Dark = sum(Dark, na.rm = TRUE),
+    total_Light = sum(Light, na.rm = TRUE),
+    total_Unknown = sum(Unknown, na.rm = TRUE),
+    latitude_site = first(latitude_site), # Assuming latitude_site is the same for all locations within a location_site
+    longitude_site = first(longitude_site) # Assuming longitude_site is the same for all locations within a location_site
+  )
+
+# View the new summarized data frame
+print(summary_location_site)
+```
+
+#Summarize Data by Spatial Extent
+```{r}
+# Summarize the counts of Dark, Light, and Unknown by spatial_scale
+summary_spatial_scale <- summary_with_covariates %>%
+  group_by(spatial_scale) %>%
+  summarise(
+    total_Dark = sum(Dark, na.rm = TRUE),
+    total_Light = sum(Light, na.rm = TRUE),
+    total_Unknown = sum(Unknown, na.rm = TRUE)
+  )
+
+# View the new summarized data frame
+print(summary_spatial_scale)
+```
+
+#Summarize Data by Season
+
+Add caribou-centric seasons
+```{r}
+# Let's create a new column for the four seasons based on the specified date ranges
+wolf_indv_with_covariates$four_season <- "Summer"
+wolf_indv_with_covariates$four_season[wolf_indv_with_covariates$day >= as.Date("2021-07-29") & wolf_indv_with_covariates$day <= as.Date("2021-10-20")] <- "Summer"
+wolf_indv_with_covariates$four_season[wolf_indv_with_covariates$day >= as.Date("2021-10-21") & wolf_indv_with_covariates$day <= as.Date("2021-12-14")] <- "Fall"
+wolf_indv_with_covariates$four_season[wolf_indv_with_covariates$day >= as.Date("2021-12-15") & wolf_indv_with_covariates$day <= as.Date("2022-04-04")] <- "Winter"
+wolf_indv_with_covariates$four_season[wolf_indv_with_covariates$day >= as.Date("2022-04-05") & wolf_indv_with_covariates$day <= as.Date("2022-06-21")] <- "Spring"
+wolf_indv_with_covariates$four_season[wolf_indv_with_covariates$day >= as.Date("2022-06-22") & wolf_indv_with_covariates$day <= as.Date("2022-08-24")] <- "Summer"
+
+# Get the column names
+column_names <- names(wolf_indv_with_covariates)
+
+# Reorder the columns
+new_column_order <- c(column_names[1:3], "four_season", column_names[4:length(column_names)])
+
+# Create the reordered data frame
+wolf_indv_with_covariates <- wolf_indv_with_covariates[, new_column_order]
+
+# Make it a factor
+wolf_indv_with_covariates <- wolf_indv_with_covariates %>% 
+            mutate_if(is.character, as.factor)
+```
+
+seasonal/spatial analysis
+```{r}
+# Step 1: Summarize by spatial_scale and four_season
+summary_spatial_scale_season <- wolf_indv_with_covariates %>%
+  group_by(spatial_scale, four_season, coat_colour) %>%
+  summarise(count = n(), .groups = 'drop') %>%
+  pivot_wider(names_from = coat_colour, values_from = count, values_fill = 0)
+
+# Step 2: Summarize by four_season alone (regardless of spatial_scale)
+summary_season <- wolf_indv_with_covariates %>%
+  group_by(four_season, coat_colour) %>%
+  summarise(count = n(), .groups = 'drop') %>%
+  pivot_wider(names_from = coat_colour, values_from = count, values_fill = 0) %>%
+  mutate(spatial_scale = "Overall")  # Add a column to indicate this is the overall summary
+```
+
+#Repeat after removing outlier
+
+Remove wolf den camera at BIO-TDN-032-05
+```{r}
+# Remove observations from location BIO-TDN-032-05
+filtered_wolf_indv <- wolf_indv_with_covariates %>%
+  filter(location != "BIO-TDN-032-05")
+```
+
+```{r}
+# Summarize by location_site and include latitude_site and longitude_site
+summary_location_site_no_outlier <- filtered_wolf_indv %>%
+  group_by(location_site, latitude_site, longitude_site) %>%
+  summarise(
+    Dark = sum(coat_colour == "Dark", na.rm = TRUE),
+    Light = sum(coat_colour == "Light", na.rm = TRUE),
+    Unknown = sum(coat_colour == "Unknown", na.rm = TRUE)
+  )
+```
+
+by spatial extent
+```{r}
+# Summarize by spatial_scale without outlier
+summary_spatial_scale_no_outlier <- filtered_wolf_indv %>%
+  group_by(spatial_scale) %>%
+  summarise(
+    Dark = sum(coat_colour == "Dark", na.rm = TRUE),
+    Light = sum(coat_colour == "Light", na.rm = TRUE),
+    Unknown = sum(coat_colour == "Unknown", na.rm = TRUE)
+  )
+
+```
+
+by season
+```{r}
+# Summarize by four_season without outlier
+summary_four_season_no_outlier <- filtered_wolf_indv %>%
+  group_by(four_season) %>%
+  summarise(
+    Dark = sum(coat_colour == "Dark", na.rm = TRUE),
+    Light = sum(coat_colour == "Light", na.rm = TRUE),
+    Unknown = sum(coat_colour == "Unknown", na.rm = TRUE)
+  )
+```
+
+by time/space
+```{r}
+# Summarize by spatial_scale and four_season without outlier
+summary_spatial_scale_season_no_outlier <- filtered_wolf_indv %>%
+  group_by(spatial_scale, four_season) %>%
+  summarise(
+    Dark = sum(coat_colour == "Dark", na.rm = TRUE),
+    Light = sum(coat_colour == "Light", na.rm = TRUE),
+    Unknown = sum(coat_colour == "Unknown", na.rm = TRUE)
+  )
+
+```
+
+
+#Correlation analysis
+
+Note: Don't take correlation coefficients between landcovers seriously because this df only includes locations where wolves were detected.
+
+Light + SPPGLM (0.32)
+Dark + elev (-0.47)
+Dark + TSPS (0.41)
+Dark + TSPBDF (0.53)
+```{r}
+
+# First we need to create a correlation matrix between the different variables of interest
+Q <- cor(summary_with_covariates[, c("z.X300_TSPNF", "z.X300_WET", "z.X300_WAT", "z.X300_SPTNF", "z.X300_MF", "z.X300_TSPG", "z.X300_TSPS", "z.X300_SPPSLM", "z.X300_SPPGLM", "z.X300_BAR", "z.X300_TSPBDF", "z.mean_cc", "z.esker_dist_m","z.mean_elev_300", "z.mean_tri_300", "z.treeline_distance_m", "Dark", "Light", "Unknown")])
+
+corrplot(Q)
+```
+
+pairwise correlations >0.7 exclude from model
+```{r}
+corrplot(Q,                              #The correlation matrix we made
+         method="color",                 # How we want the cells 
+         type="upper",                   # Just show the upper part (it is usually mirrored)
+         order="hclust",                 # Order the variables using the hclust method
+         addCoef.col = "black",          # Add coefficient of correlation  
+         number.cex = .6,
+         tl.col="black", tl.srt=45,      # Control the text label color and rotation
+         diag=F                          # Suppress the diagonal correlations (which are 1 anyway)
+         )
+```
+
+#Save CSVs
+```{r}
+# Save the final dataframe as a CSV file
+write.csv(summary_with_covariates, file="Processed_Data/wolf_coat_summary.csv", row.names = FALSE)
+
+write.csv(summary_location_site, file="Processed_Data/wolf_coat_summary_clusters.csv", row.names = FALSE)
+
+write.csv(summary_spatial_scale_season, file="Processed_Data/wolf_coat_summary_scale_season.csv", row.names = FALSE)
+
+#summaries without the outlier at BIO-TDN-032-05 (wolf den)
+
+write.csv(summary_location_site_no_outlier, file="Processed_Data/wolf_coat_summary_clusters_nooutlier.csv", row.names = FALSE)
+
+write.csv(summary_spatial_scale_season_no_outlier, file="Processed_Data/wolf_coat_summary_scale_season_nooutlier.csv", row.names = FALSE)
+```
+
