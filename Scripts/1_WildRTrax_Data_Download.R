@@ -51,7 +51,7 @@ my_projects <- wt_get_download_summary(
 
 glimpse(my_projects, width = 90)
 
-#The wt_download_report() function mimics the data download on the WildTrax website.
+#The wt_download_report() function mimics the data download function on the WildTrax website.
 #You need to supply the project_id value, which we can get from wt_get_download_summary().
 
 # Obtain the project_id value
@@ -72,6 +72,7 @@ tdn_main_raw <- wt_download_report(
 
 tdn_main_raw %>% select(1:15) %>% glimpse(width = 90)
 
+
 ##2.1 Filter outlier photos/cameras #####################################
 
 #filter raw data downloads before going on to data exploration/analysis
@@ -86,7 +87,7 @@ tag_data_tmp2<-filter(tag_data_tmp,!((location == "BIO-TDN-029-02") & #filter by
                                   (as_datetime(image_date_time)>as_datetime("2022-08-19 13:30:10")))) #filter images taken after 2022-08-19 13:30:10
 stopifnot(nrow(tag_data_tmp2)==(nrow(tag_data_tmp)-1076)) #stop if the new df isn't smaller by 1076
 
-#long term deployments retrieved early, not comparable with other data
+#the following cameras were long term deployments retrieved early, not comparable with other data
 
 #BIO-TDN-052-06 filter out all images after 2022-08-17 16:57:50
 tag_data_tmp3<-filter(tag_data_tmp2,!((location == "BIO-TDN-052-06") & #filter by location
@@ -108,7 +109,7 @@ tag_data_tmp6<-filter(tag_data_tmp5,!((location == "BIO-TDN-165-06") & #filter b
                                         (as_datetime(image_date_time)>as_datetime("2022-08-17 13:37:20")))) #filter out images taken after date/time
 stopifnot(nrow(tag_data_tmp6)==(nrow(tag_data_tmp5)-542)) #stop if the new df isn't smaller by the correct number of tags
 
-#remove the following stations completely
+#remove the following stations completely, these were all added in the summer 2022 as long term deployments but removed early
 
 #BIO-TDN-HF-G1, BIO-TDN-HF-G2, BIO-TDN-HF-LF, BIO-TDN-HF-P1, BIO-TDN-HF-R1 all new sites which were added then removed. 
 locations_to_filter <- c("BIO-TDN-HF-G1", "BIO-TDN-HF-G2", "BIO-TDN-HF-LF", "BIO-TDN-HF-P1", "BIO-TDN-HF-R1")
@@ -118,7 +119,12 @@ length(unique(tag_data$location)) #check to make sure the HF locations got filte
 
 rm(tag_data_tmp,tag_data_tmp2,tag_data_tmp3,tag_data_tmp4,tag_data_tmp5,tag_data_tmp6) #remove tag_data_tmp to clean environment
 
+
 ## 2.2 Remove tags which were "Out of Range" ###############################
+
+#wildRTrax doesn't automatically filter out Out of Range data. 
+#We don't want to be looking at species tags from Out of Range images as they are not directly comparable to the rest of the data.
+
 unique(tag_data$image_fov) #check fov values
 
 tag_data_filter <- tag_data %>% filter(!image_fov == "Out of Range") #filter out "Out of Range" 
@@ -131,18 +137,23 @@ unique(tag_data_filter$image_fov) #check fov values after the filter
 
 #267569 tags of animals ID'd to species level
 
+
 ## 2.3 Correct species names####
-#proper common names and facilitates codes later
+
+#proper common names that also facilitates data exploration and analysis scripts later
 
 #change tag_data_filter to sp_summary names
 tag_data_filter[tag_data_filter$species_common_name == "Beaver","species_common_name"] <- "American Beaver"
 tag_data_filter[tag_data_filter$species_common_name == "Gray Jay", "species_common_name"] <- "Canada Jay"
 tag_data_filter[tag_data_filter$species_common_name == "Bald eagle", "species_common_name"] <- "Bald Eagle"
 
-# change barren-ground to just caribou
+# change barren-ground to just Caribou
 tag_data_filter[tag_data_filter$species_common_name == "Barren-ground Caribou","species_common_name"] <- "Caribou"
 
+
 # 3. Independent detections ########################################################
+
+#independent detections at the 30 minute independence threshold from the filtered tag data
 
 tdn_wt_ind_det <- wt_ind_detect(
   x = tag_data_filter,
@@ -163,6 +174,8 @@ glimpse(tdn_wt_ind_det, width = 75)
 # 4. Camera Summaries ##########################################################################
 
 ## 4.1 Base wildRtrax summarise function ######################
+
+# hashtagged the base wildRTrax summary functions in favour of Val's modified codes
 
 # wt_summarise_cam function groups months in different years resulting in over 
 # 31 days of monthly effort at cameras which were deployed earlier than their 
@@ -250,6 +263,7 @@ filtered_cam_summaries_day <- cam_summaries_day %>%
                                        #output_format = "wide")
 
 #use daily summary to generate monthly detections
+#works better than the functions above and accounts for effort
 cam_summaries_month <- filtered_cam_summaries_day |>
   mutate(month = month(day)) |>
   relocate(month, .after = year) |>
@@ -264,7 +278,6 @@ cam_summaries_week <- filtered_cam_summaries_day |>
   relocate(week, .after = year) |>
   group_by(location, year, week) |>
   summarise(across(`n_days_effort`:`Yellow-rumped Warbler`, sum))
-
 
 #full summary
 cam_summaries_full <- filtered_cam_summaries_day |>
@@ -281,19 +294,19 @@ cam_summaries_biweek <- filtered_cam_summaries_day %>%
 ## 4.3 Write csv ####
 
 #daily summary
-write.csv(filtered_cam_summaries_day, paste0(project,"_cam_summaries_day.csv"), row.names = F)
+#write.csv(filtered_cam_summaries_day, paste0(project,"_cam_summaries_day.csv"), row.names = F)
 
 #weekly summary
-write.csv(cam_summaries_week, paste0(project,"_cam_summaries_week.csv"), row.names = F)
+#write.csv(cam_summaries_week, paste0(project,"_cam_summaries_week.csv"), row.names = F)
 
 #monthly summary
-write.csv(cam_summaries_month, paste0(project,"_cam_summaries_month.csv"), row.names = F)
+#write.csv(cam_summaries_month, paste0(project,"_cam_summaries_month.csv"), row.names = F)
 
 #full summary
-write.csv(cam_summaries_full, paste0(project,"_cam_summaries_full.csv"), row.names = F)
+#write.csv(cam_summaries_full, paste0(project,"_cam_summaries_full.csv"), row.names = F)
 
 #biweekly summary
-write.csv(cam_summaries_biweek, paste0(project,"_cam_summaries_biweek.csv"), row.names = F)
+#write.csv(cam_summaries_biweek, paste0(project,"_cam_summaries_biweek.csv"), row.names = F)
 
 
 #5. Focal Sp ###########################################################################
@@ -371,19 +384,19 @@ cam_summaries_biweek_focal <- filtered_cam_summaries_day_focal %>%
 ## 5.4 Write csv ####
 
 #daily summary focal
-write.csv(filtered_cam_summaries_day_focal, paste0(project,"_cam_summaries_day_focal.csv"), row.names = F)
+#write.csv(filtered_cam_summaries_day_focal, paste0(project,"_cam_summaries_day_focal.csv"), row.names = F)
 
 #weekly summary focal
-write.csv(cam_summaries_week_focal, paste0(project,"_cam_summaries_week_focal.csv"), row.names = F)
+#write.csv(cam_summaries_week_focal, paste0(project,"_cam_summaries_week_focal.csv"), row.names = F)
 
 #monthly summary focal
-write.csv(cam_summaries_month_focal, paste0(project,"_cam_summaries_month_focal.csv"), row.names = F)
+#write.csv(cam_summaries_month_focal, paste0(project,"_cam_summaries_month_focal.csv"), row.names = F)
 
 #full summary focal
-write.csv(cam_summaries_full_focal, paste0(project,"_cam_summaries_full_focal.csv"), row.names = F)
+#write.csv(cam_summaries_full_focal, paste0(project,"_cam_summaries_full_focal.csv"), row.names = F)
 
 #biweekly summary focal
-write.csv(cam_summaries_biweek_focal, paste0(project,"_cam_summaries_biweek_focal.csv"), row.names = F)
+#write.csv(cam_summaries_biweek_focal, paste0(project,"_cam_summaries_biweek_focal.csv"), row.names = F)
 
 ## 5.5 Cluster Summary ####
 #create total camera summary by site for all species
@@ -408,7 +421,7 @@ site_summaries_full <-  site_summaries_full |>
   summarise(across(`n_days_effort`:`Yellow-rumped Warbler`, sum))
 
 #write csv
-write.csv(site_summaries_full, paste0(project,"_clust_summaries_full.csv"), row.names = F)
+#write.csv(site_summaries_full, paste0(project,"_clust_summaries_full.csv"), row.names = F)
 
 # 6. Mammals only ####
 
@@ -490,17 +503,17 @@ cam_summaries_biweek_mam <- filtered_cam_summaries_day_mam %>%
 ## 6.4 Write csv ####
 
 #daily summary focal
-write.csv(filtered_cam_summaries_day_mam, paste0(project,"_cam_summaries_day_mam.csv"), row.names = F)
+#write.csv(filtered_cam_summaries_day_mam, paste0(project,"_cam_summaries_day_mam.csv"), row.names = F)
 
 #weekly summary focal
-write.csv(cam_summaries_week_mam, paste0(project,"_cam_summaries_week_mam.csv"), row.names = F)
+#write.csv(cam_summaries_week_mam, paste0(project,"_cam_summaries_week_mam.csv"), row.names = F)
 
 #monthly summary focal
-write.csv(cam_summaries_month_mam, paste0(project,"_cam_summaries_month_mam.csv"), row.names = F)
+#write.csv(cam_summaries_month_mam, paste0(project,"_cam_summaries_month_mam.csv"), row.names = F)
 
 #full summary focal
-write.csv(cam_summaries_full_mam, paste0(project,"_cam_summaries_full_mam.csv"), row.names = F)
+#write.csv(cam_summaries_full_mam, paste0(project,"_cam_summaries_full_mam.csv"), row.names = F)
 
 #biweekly summary focal
-write.csv(cam_summaries_biweek_mam, paste0(project,"_cam_summaries_biweek_mam.csv"), row.names = F)
+#write.csv(cam_summaries_biweek_mam, paste0(project,"_cam_summaries_biweek_mam.csv"), row.names = F)
 
