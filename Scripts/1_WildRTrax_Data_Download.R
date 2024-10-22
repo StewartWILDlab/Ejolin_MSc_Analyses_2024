@@ -1,3 +1,8 @@
+
+#This script downloads our raw camera tagging data from WildTrax using their wildRTrax package
+
+#Supplementary code developed with V.Lucet in 2023 to modify the raw data into a more useable format for our analyses
+
 # 0. Load packages ###################################################################
 library(lubridate)
 library(dplyr)
@@ -28,15 +33,12 @@ library(wildRtrax)
 
 ##Note: These need to be called WT_USERNAME and WT_PASSWORD, respectively.
 
-#Sys.setenv(WT_USERNAME = "joli6810@mylaurier.ca", WT_PASSWORD = "Dinoman_9")
+#Sys.setenv(WT_USERNAME = "XXXXX@mylaurier.ca", WT_PASSWORD = "XXXXXX")
 
 #These values live only on your device. But be careful about including sensitive information in a script that you may (inadvertently) share!
-#One solution - save a login script file locally1:
+#One solution - save a login script file locally
 
-credentials <- "Sys.setenv(WT_USERNAME = 'joli6810@mylaurier.ca', WT_PASSWORD = 'Dinoman_9')"
-writeLines(credentials, "login.R")
-
-# Then, at the top of your data download script, source the file
+# Then, at the top of your data download script, source the file created in 0_WildRTrax_login_credentials.R
 source("login.R")
 
 # Now, all you need to do is run one function. With no arguments!!!
