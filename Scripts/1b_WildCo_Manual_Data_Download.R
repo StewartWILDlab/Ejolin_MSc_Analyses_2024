@@ -20,6 +20,11 @@
 #updated for 2023 WildTrax data download formats by Eric Jolin
 #ejolin@alumni.uoguelph.ca
 
+##################################################################################
+
+# 2024: Used for some data exploration, replaced for analysis by more streamlined data download process in 1_WildRTrax_Data_Download.R
+
+##################################################################################
 
 #### 0. Set up and load data ####
 
@@ -437,7 +442,7 @@ class(deploy_wide$duration)
 #write.csv(deploy_wide_cov, paste0(project,"_CAM_Deployment_Data_", version, ".csv"),row.names = F)
 
 
-write.csv(deploy_wide, paste0(project,"_CAM_Deployment_Data_", version, ".csv"),row.names = F)
+#write.csv(deploy_wide, paste0(project,"_CAM_Deployment_Data_", version, ".csv"),row.names = F)
 
 
 #### 3. Clean data and variable names for detection data ####
@@ -459,7 +464,7 @@ str(lessdata)
 #lessdata<-merge(lessdata,deploy_wide,by=c("project","location"))
 #lessdata<-lessdata %>% select(-duration, -deployment_begin_date, -deployment_end_date)
 
-write.csv(lessdata, paste0(project, "_CAM_Detection_Data_", version,".csv" ), row.names=F)
+#write.csv(lessdata, paste0(project, "_CAM_Detection_Data_", version,".csv" ), row.names=F)
 
 
 #### 4. Independent detections and group count ####
@@ -566,7 +571,7 @@ independent_data<-independent_data %>%
   rename("image_fov"="group_count")
 
 # Save it for a rainy day
-write.csv(independent_data, paste0(project,"_CAM_Independent_Detections_",version, ".csv"), row.names = F)
+# write.csv(independent_data, paste0(project,"_CAM_Independent_Detections_",version, ".csv"), row.names = F)
 
 #### 5. Independent detections at the site level ####
 
