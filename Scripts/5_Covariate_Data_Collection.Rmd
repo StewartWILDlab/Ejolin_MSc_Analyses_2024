@@ -1127,6 +1127,11 @@ env_data$Lowland_Burn_41_60_yo <- ifelse(
 
 ```
 
+
+
+
+
+
 #4. Non-buffer Covariates Ecoregions
 
 ##4.1. Ecoregion
@@ -1318,6 +1323,11 @@ env_data<-left_join(env_data,burn_decade_nfdb,by="location")
 
 ```
 
+
+
+
+
+
 #5. Save covariate data as csv
 
 ```{r}
@@ -1330,6 +1340,11 @@ env_data<-left_join(env_data,burn_decade_nfdb,by="location")
 
 write.csv(env_data, paste0(project, "_camera_locations_and_covariates_", version, ".csv" ), row.names = F)
 ```
+
+
+
+
+
 
 #6. Correlations between predictors
 
