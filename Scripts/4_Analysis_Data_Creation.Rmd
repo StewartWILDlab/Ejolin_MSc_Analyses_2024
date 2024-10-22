@@ -4,6 +4,13 @@ output: html_document
 date: "2023-08-02"
 ---
 
+#UPDATE 2024: The codes to create analysis dataframes are now outdated and can be replaced by 
+dataframes created within 1_WildRtrax_Data_Download.R
+
+Daily_lookup section is still relevant, could probably move to 1_WildRtrax_Data_Download.R
+
+Final data check code chunk at the end is still relevant and useful.
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -18,13 +25,6 @@ lapply(list.of.packages, require, character.only = TRUE)
 ```
 
 # Load data
-
-The codes to create analysis dataframes are now outdated and can be replaced by 
-dataframes created within 1c. wildRtrax.R
-
-Daily_lookup section is still relevant, could probably move to 1c. wildRtrax.R
-
-Final data check code chunk at the end is still relevant and useful.
 
 ```{r}
 tdn_main_raw<-read.csv("Raw_Data/TDN_RawData_27112023/NWTBM_Thaidene_Nëné_Biodiversity_Project_2021_main_report.csv")
@@ -337,28 +337,28 @@ Finally, this script outputs 11 useful data frames for future data analysis:
 1. A data frame of “independent detections” at the 30 minute threshold you specified at the start:
 
 ```{r}
-write.csv(ind_dat, paste0("Processed_Data/WildCo/","TDN", "_",independent ,"min_independent_detections.csv"), row.names = F)
+#write.csv(ind_dat, paste0("Processed_Data/WildCo/","TDN", "_",independent ,"min_independent_detections.csv"), row.names = F)
 
 # also write the cleaned all detections file (some activity analyses require it)
-write.csv(img_tmp, paste0("Processed_Data/WildCo/","TDN_raw_detections.csv"), row.names = F)
+#write.csv(img_tmp, paste0("Processed_Data/WildCo/","TDN_raw_detections.csv"), row.names = F)
 ```
 
 2. The “daily_lookup” which is a dataframe of all days a given camera station was active. Some people use an lookup matrix for this step, but we find the long format is much easier to use in downstream analysis. - “data/processed_data/_daily_deport_lookup.csv”
 
 ```{r}
-write.csv(row_lookup, paste0("Processed_Data/WildCo/","TDN_daily_lookup.csv"), row.names = F)
+#write.csv(row_lookup, paste0("Processed_Data/WildCo/","TDN_daily_lookup.csv"), row.names = F)
 ```
 
 2b. Survey effort by location df
 
 ```{r}
-write.csv(mean_dates_per_location, paste0("Processed_Data/WildCo/","TDN_camera_effort.csv"), row.names = F)
+#write.csv(mean_dates_per_location, paste0("Processed_Data/WildCo/","TDN_camera_effort.csv"), row.names = F)
 ```
 
 2c. Effort per season by location
 
 ```{r}
-write.csv(mean_dates_per_location_season, paste0("Processed_Data/WildCo/","TDN_camera_effort_by_season.csv"), row.names = F)
+#write.csv(mean_dates_per_location_season, paste0("Processed_Data/WildCo/","TDN_camera_effort_by_season.csv"), row.names = F)
 ```
 3. Unique camera locations list:
 
@@ -483,9 +483,9 @@ total_obs<-read.csv("Processed_Data/WildCo/TDN_total_obs_v15.csv")
     }
 
   
-write.csv(mon_obs, paste0("Processed_Data/WildCo/","_TDN_min_independent_monthly_observations.csv"), row.names = F) 
+#write.csv(mon_obs, paste0("Processed_Data/WildCo/","_TDN_min_independent_monthly_observations.csv"), row.names = F) 
 
-write.csv(mon_count, paste0("Processed_Data/WildCo/","_TDN_min_independent_monthly_counts.csv"), row.names = F) 
+#write.csv(mon_count, paste0("Processed_Data/WildCo/","_TDN_min_independent_monthly_counts.csv"), row.names = F) 
 ```
 
 9 & 10: A ‘site_week x species’ matrix of the number of independent detections and species counts across for each week in the study period:
@@ -524,9 +524,9 @@ write.csv(mon_count, paste0("Processed_Data/WildCo/","_TDN_min_independent_month
       
     }
 
-write.csv(week_obs, paste0("Processed_Data/WildCo/","_TDN_min_independent_weekly_observations.csv"), row.names = F) 
+#write.csv(week_obs, paste0("Processed_Data/WildCo/","_TDN_min_independent_weekly_observations.csv"), row.names = F) 
 
-write.csv(week_count, paste0("Processed_Data/WildCo/","_TDN_min_independent_weekly_counts.csv"), row.names = F) 
+#write.csv(week_count, paste0("Processed_Data/WildCo/","_TDN_min_independent_weekly_counts.csv"), row.names = F) 
 ```
 
 11 & 12: A ‘site_day x species’ matrix of the number of independent detections and species counts across for each day a station was active in the study period:
@@ -553,9 +553,9 @@ write.csv(week_count, paste0("Processed_Data/WildCo/","_TDN_min_independent_week
         
       
     }
-write.csv(day_obs, paste0("Processed_Data/WildCo/","_TDN_min_independent_daily_observations.csv"), row.names = F) 
+#write.csv(day_obs, paste0("Processed_Data/WildCo/","_TDN_min_independent_daily_observations.csv"), row.names = F) 
 
-write.csv(day_count, paste0("Processed_Data/WildCo/","_TDN_min_independent_daily_counts.csv"), row.names = F) 
+#write.csv(day_count, paste0("Processed_Data/WildCo/","_TDN_min_independent_daily_counts.csv"), row.names = F) 
 ```
 
 ## 4.6.1 Final data check
@@ -624,7 +624,7 @@ tmp %>%
 
 Counts
 
-Can create these dataframes in 1c. wildRtrax.R by changing wt_summarise function
+Can create these dataframes in 1_WildRtrax_Data_Download.R by changing wt_summarise function
 ```{r}
 tmp <- cbind(data.frame("Time"=c("Total", "Monthly", "Weekly", "Daily")),
 rbind(colSums(total_count[,2:ncol(total_count)]),

@@ -1,11 +1,14 @@
-```{r setup and tests, include=FALSE}
 
 ## README FIRST ##
-#Read and run this chunk of code line by line in the R Console (do not press knit) - there are some questions below which you will have to answer and some logic tests to complete. Once you are happy that the conditions have been satisfied, hit 'knit' above. 
+
+Read and run this chunk of code line by line in the R Console (do not press knit) - there are some questions below which you will have to answer and some logic tests to complete. Once you are happy that the conditions have been satisfied, hit 'knit' above. 
 
 #modified for TDN by Eric Jolin
 #ejolin@alumni.uoguelph.ca
 
+#UPDATE 2024: this .Rmd is for use with the datasets created using 1b_WildCo_Manual_Data_Download.R, now outdated
+
+```{r setup and tests, include=FALSE}
 # Load required packages
 
 library(leaflet)
