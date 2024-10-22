@@ -188,7 +188,7 @@ glimpse(tdn_wt_ind_det, width = 75)
 ### NOTE: daily summary doesn't take "Out of Range" data, previously filtered out, into account ####
 # days at cameras which were "out of Range" should not be counted as it inflates overall survey effort
 
-###UPDATE: 2023-12-18, Use daily_lookup.csv created in $_analysis_data_creation.Rmd to subset cam_summaries_day to only the days where the camera was actually functioning properly ####
+###UPDATE: 2023-12-18, Use daily_lookup.csv created in 4_analysis_data_creation.Rmd to subset cam_summaries_day to only the days where the camera was actually functioning properly ####
 TDN_daily_lookup<-read.csv("Processed_Data/WildCo/TDN_daily_lookup.csv")
 
 if ("season" %in% colnames(TDN_daily_lookup)) {

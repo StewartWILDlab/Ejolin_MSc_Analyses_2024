@@ -1,12 +1,14 @@
-#script to count cameras/cluster, and distance between cameras/clusters
+#script to count number of cameras and clusters, as well as the distance between cameras/clusters
 
+#load location data
 cameras_locations<-read.csv("Raw_Data/TDN_camera_site_locations.csv")
 
 # Load necessary library
 library(dplyr)
 
+
 ################################################################################
-# Average number of cameras per cluster
+# Calculate average number of cameras per cluster
 
 # Group by location_site and count the number of locations per location_site
 location_counts <- cameras_locations %>%
@@ -23,6 +25,7 @@ cat("Average number of locations per location_site:", avg_locations, "\n")
 cat("Standard Deviation of locations per location_site:", sd_locations, "\n")
 cat("Range of locations per location_site: from", range_locations[1], "to", range_locations[2], "\n")
 #This code will provide you with the average number of locations per location_site, the standard
+
 
 ################################################################################
 #Distance between clusters
@@ -53,6 +56,7 @@ range_distance <- range(distances)
 cat("Average distance between location_site values:", avg_distance, "meters\n")
 cat("Standard Deviation of distances between location_site values:", sd_distance, "meters\n")
 cat("Range of distances between location_site values: from", range_distance[1], "to", range_distance[2], "meters\n")
+
 
 ################################################################################
 #Average distance between cameras across clusters
