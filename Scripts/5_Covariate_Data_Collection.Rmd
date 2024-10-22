@@ -8,7 +8,9 @@ date: "2023-07-05"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+#README
 A simple script to extract raster information from buffers around lat/long locations
+Collect environmental covariate data for use in future analyses
 
 #Load Packages
 ```{r}
@@ -41,6 +43,10 @@ cam_data<-read.csv("Raw_Data/TDN_camera_site_locations.csv")
 #Load boundary data
 TDN <- st_read("Spatial/Boundary_TDN/TDN_Boundary.shp")
 ```
+
+
+
+
 
 #1. DUC Data
 
@@ -180,6 +186,7 @@ duc_areas %>%
 |Thaidene Nene |    13|   32.62863|Upland Other     |
 |Thaidene Nene |    15|    0.59310|Cloud            |
 |Thaidene Nene |    16|    0.27880|Shadow           |
+
 
 
 
@@ -333,9 +340,16 @@ When looking at the dominant LCC classes in 1km hexagons (which were used to ori
 
 WET encompasses a lower area than the combined DUC wetland classes but still seems underrepresented by cameras. Wetland target may address this. 
 
+
+
+
 #3. Extracting data from buffers around cameras
 
-Minimum distance between clusters is 3245m and half that (to ensure no overlapping circles would be 1622.5m). 
+The following code chunks are used to compare landcover proportions across different buffer sizes (or sampling grains) to decide which buffer size we want to use in analyses.
+
+Minimum distance between clusters is 3245m and half that (to ensure no overlapping circles would be 1622.5m).
+300m is the minimum distance between cameras
+550m is roughly equivalent to the radius of the survey hexagons used in the survey design
 
 ```{r}
 #Create buffers of 300m around each camera
@@ -615,6 +629,9 @@ print(t_test_results_df)
 6   1622_3245 1.629630e-03
 
 ##3.2. DEM
+
+elevation data from ArcticDEM
+
 ```{r}
 #load data
 DEM<-raster("Spatial/DEM/TDN_DEM.tif")
@@ -746,6 +763,9 @@ env_data<-left_join(env_data,dem_extract_join,by="location")
 
 
 ####3.2.1 TRI
+
+terrain ruggedness index (tri, i.e., difference in elevation) also from ArcticDEM
+
 ```{r}
 #load data
 TRI<-raster("Spatial/DEM/tdn_tri")
@@ -877,6 +897,9 @@ env_data<-left_join(env_data,tri_extract_join,by="location")
 
 
 ##3.3. Canopy Cover
+
+From national forestry database
+
 ```{r}
 #load data
 CC<-raster("Spatial/ForestStructure/TDN_forest_percentage_first_returns_above_mean_2015.tif")
