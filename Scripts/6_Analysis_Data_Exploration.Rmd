@@ -8,7 +8,11 @@ date: "2023-07-29"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-Modified from C.Beirne CMI Workshop script
+#README
+
+Modified from C.Beirne CMI Workshop script by E.Jolin
+
+Originally used the dataset output from the WildCO_Manual_Data_Download.R, but modified to work with the outputs of WildRTrax_Data_Download.R
 
 #Load packages
 ```{r}
@@ -62,6 +66,8 @@ m
 
 #7.2 Independent detections summary
 
+NOTE: this uses the old manually downloaded data
+
 When you are writing papers or reports based on camera data, it is useful to have a capture summary table in the main text or as an appendix. We will use the species list we created to append summary information to:
 
 ```{r}
@@ -88,8 +94,8 @@ sp_rank[sp_rank$species_common_name == "Caribou","species_rank"] <- "Species"
 
 To summaries the wildlife detections in this project we can make use of the ...total_observations.csv files:
 
-##NOTE: 2023-12-28
-Most of this code is outdated, can just use dataframes created in 1c. wildRtrax.R 
+###NOTE: 2023-12-28
+Most of this code is outdated, can just use dataframes created in WildRTrax_Data_Download.R
 
 ```{r}
 #ind_det <- tdn_wt_ind_det
@@ -185,8 +191,8 @@ We need to add a 'days' column which has the survey effort for each location for
 ```
 
 
-#read total_obs dataframe created in wildrtrax (TDN_cam_summaries_full)
-rather than the makeshift script created above
+###read total_obs dataframe created in WildRTrax_Data_Download.R (TDN_cam_summaries_full)
+rather than the makeshift script created and hashtagged out above
 ```{r}
 total_obs<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_full.csv")
 ```
