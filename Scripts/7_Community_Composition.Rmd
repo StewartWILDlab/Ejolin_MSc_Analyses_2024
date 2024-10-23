@@ -8,6 +8,14 @@ date: "2023-07-31"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+#README
+
+Another C.Beirne script modified by E.Jolin
+
+Modified to work with outputs from 1_WildRTrax_Data_Download.R
+
+Data exploration mainly regarding community composition, and in relation to environmental covariates
+
 # Load the required packages
 
 ```{r}
@@ -308,7 +316,7 @@ Which suggests the same pattern!
 
 ## 8.4.2 On your own
 
-#dom_habitat_lcc
+###dom_habitat_lcc
 ```{r}
 # Create a new empty list
 inc_time_lcc <- list()
@@ -376,7 +384,7 @@ ggiNEXT(out.inc, type=1, color.var="Assemblage",facet.var = "Assemblage") +
 theme_classic() 
 ```
 
-#dom_habitat_lcc_hexagon
+###dom_habitat_lcc_hexagon
 ```{r}
 # Create a new empty list
 inc_time_lcc_hex <- list()
