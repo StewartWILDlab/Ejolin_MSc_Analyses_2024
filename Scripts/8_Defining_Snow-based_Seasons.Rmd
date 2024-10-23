@@ -8,15 +8,15 @@ date: "2023-09-12"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-#Intro
+#README
 
-This script is created to define the summer/winter seasons within TDN using the ...image_report.csv, the "image_snow" field, filtered by "Time Lapse" images.
+This script is created to define the summer/winter seasons within TDN using the ...image_report.csv, the "image_snow" field, filtered by "Time Lapse" images.The image_snow field was checked Y if the timelapse image had greater than or equal to 50% ground cover of snow, N if the image had less than 50% ground cover of snow. Snow tagging was done by S.Daher and verified by E.Jolin. 
 
-Start and end of the winter season will be delimited by the first and last seven consecutive days of snow cover respectively. 
+Start and end of the winter season will be delineated by the first and last seven consecutive days of snow cover respectively. Adapted from US National Parks Service protocols described at the North American Caribou Workshop and Arctic Ungulate Conference 2023 by Matthew Cameron. 
 
-These dates need to be calculated at each camera station and the average date taken across stations for the entire study area. 
+These dates need to be calculated at each camera station and the average date taken across stations for the entire study area.
 
-This is a bit outdated considering we're using caribou-based seasons now...
+These snow-based seasons are useful but we ended up going with biologically relevant seasons for caribou in TDN instead based on detection data. The code to create these seasons is in 9c_GLMM_Create_Datasets.Rmd  
 
 #Load packages
 ```{r}
