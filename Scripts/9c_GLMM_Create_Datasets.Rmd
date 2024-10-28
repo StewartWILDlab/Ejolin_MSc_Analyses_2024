@@ -8,6 +8,16 @@ date: "2024-04-05"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# README
+
+This document is used to create the datasets to be used in GLMM analyses in 9d_AllSpatialScales_Weekly_Cleaned.Rmd
+
+Also compare snow based and biologically relevant seasons for use in analyses. 
+
+Compared daily and weekly temporal sampling grain.
+
+Checked each spatiotemporal dataset for significance of specific camera targets. 
+
 # Load packages
 
 ```{r}
