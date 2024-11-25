@@ -8,7 +8,7 @@ date: "2024-04-05"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# README
+# README.
 
 This document is used to create the datasets to be used in GLMM analyses in 9d_AllSpatialScales_Weekly_Cleaned.Rmd
 
