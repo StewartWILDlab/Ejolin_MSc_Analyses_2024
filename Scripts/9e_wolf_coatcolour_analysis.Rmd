@@ -8,6 +8,10 @@ date: "2024-09-04"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# README
+
+This script was used for the quick statistics to summarize wolf coat colours for the pack dynamic subsection of Chapter 3. Coat colour was defined as per Musiani et al 2007 protocols manually for each individual wolf by EJolin. 
+
 # Load packages
 
 ```{r}
