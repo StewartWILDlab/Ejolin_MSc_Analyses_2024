@@ -10,13 +10,12 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # README.
 
-This document is used to create the datasets to be used in GLMM analyses in 9d_AllSpatialScales_Weekly_Cleaned.Rmd
+This document is used to create the datasets to be used in GLMM analyses in the next script, 9d_AllSpatialScales_Weekly_Cleaned.Rmd
 
-Also compare snow based and biologically relevant seasons for use in analyses. 
-
-Compared daily and weekly temporal sampling grain.
-
-Checked each spatiotemporal dataset for significance of specific camera targets. 
+This script also:
+- compares snow derived and biologically relevant caribou seasons for use in analyses. 
+- compared daily and weekly temporal sampling grain for use in analyses.
+- tested the significance of camera targets in each spatiotemporal dataset to test whether or not they should be included in analyses.
 
 # Load packages
 
@@ -40,7 +39,7 @@ locs <- locs %>%
 
 # You should also standardize your covariates - it helps models coverage and facillitates comparison of effects sizes
 
-#NEED TO RUN THIS SO LAT/LONG DONT GET STANDARDIZED
+#IMPORTANT: NEED TO RUN THIS SO LAT/LONG DONT GET STANDARDIZED
 #non response variable species should be scaled but that can manually be done in the GLMM formulas
 library(MuMIn)
 z_locs <- stdize(locs, omit.cols = c("latitude","longitude","latitude_site","longitude_site","spatial_scale"))
@@ -48,9 +47,9 @@ z_locs <- stdize(locs, omit.cols = c("latitude","longitude","latitude_site","lon
 
 #######################################################################################################################################################################################################################################################################################################################################
 
-# Delineate Caribou Seasons
+# Delineate Caribou Seasons (GPS)
 
-Rather than defining seasons in a community aspect using snowcover (which would be more suited to a multispecies analysis) I want to divide data by biologically relevant "caribou seasons". The problem here is that these seasons vary by date from year to year and from herd to herd based on GPS collar data. I have 2021-2022 dates for the Ahiak herd from GN reports but I don't have similar recent seasonal date ranges for the Bathurst/Beverly herds (date ranges used in many reports for the Bathurst herd are from a 2011 study). Do have telemetry data for the Bev/Bath caribou but it's clipped to the spatial extent of TDN. 
+Rather than defining seasons using snow cover (which would be more suited to a multispecies analysis) I want to divide data by biologically relevant "caribou seasons". The problem here is that these seasons vary by date from year to year and from herd to herd based on GPS collar data. I have 2021-2022 dates for the Ahiak herd from GN reports but I don't have similar recent seasonal date ranges for the Bathurst/Beverly herds (date ranges used in many reports for the Bathurst herd are from a 2011 study). I do have telemetry data for the Bev/Bath caribou but it's clipped to the spatial extent of TDN. 
 
 Determine first obs, last obs, and number of days observed in TDN for each individual collared caribou using 2021/2022 collar data. Extracted attribute table as csv from shapefile using arcgis
 
@@ -110,7 +109,7 @@ Looks like the cows are only using TDN during Rut/Breeding, Fall Migration - pos
 
 Ahiak have slightly different seasonal cutoff dates but collared cows roughly use TDN in 2021/2022 in Late Summer, Fall migration - pre-breeding, Rut/breeding, Fall migration - post-breeding, Winter, no spring migration, then back for Summer and Late Summer. 
 
-If we used these dates, how do we account for the different herds (Ahiak winters here but they're expected to winter on the tundra as opposed to Bev/Bath) and the seasons where we're less likely to have female caribou (i.e. spring)
+If we used these dates, how do we account for the different herds? Ahiak/NE herds winter here but they're expected to winter on the tundra as opposed to Bev/Bath) and the seasons where we're less likely to have female caribou (i.e. summer/spring)
 
 #######################################################################################################################################################################################################################################################################################################################################
 
@@ -191,7 +190,10 @@ ggplot(daily_sum, aes(x = day, y = total_daily_cr, fill = snow_season)) +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
   scale_x_date(date_breaks = "1 month", date_labels = "%b %Y")
 ```
-Based on the daily detections it looks like caribou detection rate could be broken down into the following biologically relevant seasons. These dates roughly conform to date ranges for the Beverly, Bathurst, and Ahiak herds listed in various GN and GNWT reports. 
+
+## Add Caribou Seasons (Detection Data)
+
+Based on the daily detections it looks like caribou detection rate could be broken down into the following biologically relevant seasons based on natural breaks. These dates roughly conform to date ranges for the Beverly, Bathurst, and Ahiak herds listed in various GN and GNWT reports. 
 
 Typical caribou seasons (Nagy 2011 and GN use 9 seasons):
 July 29, 2021 - Oct 20, 2021: Summer/Late Summer
@@ -277,6 +279,7 @@ ggplot(daily_sum, aes(x = day, y = total_daily_cr, fill = four_season)) +
 
 ###Updated colours for thesis
 
+I like this pallette better
 ```{r}
 # Group by day and summarize the total Caribou count and effort
 daily_sum <- mod_dat_daily %>%
@@ -383,6 +386,9 @@ ggplot(total_days_effort, aes(x = day, y = total_effort)) +
 
 
 ########################################################################################################################################################################################################################################################################################################################################################################
+# REGIONAL EXTENT
+
+Create datasets to be used in subsequent analyses. Regional extent refers to all cameras across all of TDN
 
 #  Multiseason, WEEKLY detections
 ```{r}
@@ -465,6 +471,8 @@ ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) 
 let's repeat this process with the new 4-season caribou based dates from the daily detection data
 
 Should the 4-seasons be based now on week instead of the daily detections even though it's less detailed?
+
+Decided to keep the dates based on daily detection rate due to higher resolution.
 
 based on daily detection rate:
 July 29, 2021 - Oct 20, 2021: Summer
@@ -1457,7 +1465,9 @@ Not Significant
 
 ################################################################################################################################################################################################################################################################################################################################################################
 
-# Caribou Sites Only
+# LOCAL EXTENT
+
+Local extent includes all cameras within clusters where at least one camera had at least one caribou detection at any point in the year, represents the actual home range during this sampling period.
 
 Subset detection data to only the clusters which captured caribou at a least one of their cameras. Must be subset after joining with covariates to filter by location_site. Must decide on response variable time (i.e. week, biweek) before trying this to cut down on time. 
 
@@ -1485,7 +1495,7 @@ mod_dat_wk_cbou <- mod_dat_wk %>%
 
 ```
 
-Better to use biological rationale for choosing the local sites rather than a detection based criteria. Proportion of "TUNDRA" vs "TAIGA"? Compare with locations from caribou based data above
+Better to use biological rationale for choosing the local sites rather than a detection based criteria? Proportion of "TUNDRA" vs "TAIGA"? Compare with locations from caribou based data above.
 ```{r}
 # Create a new dataframe with rows where z.TUNDRA > z.TAIGA
 mod_dat_wk_tundra <- mod_dat_wk %>%
@@ -1551,6 +1561,8 @@ map
 Very annoyingly, there is one single camera with caribou detections which is not in a majority tundra-type landcover area.
 
 BIO-TDN-050-06 has only two independent detections, both on 2021-11-24, first of a large bachelor group during the day and next of two females that night. Right in the transitional area between tundra and taiga but the camera micro site is very much needle leaf forest.
+
+The rationale for using caribou detection data to define the local extent is that we want the spatial extent to be biologically relevant to caribou in TDN specifically and from 2021-22 specifically. 
 
 ##Plotting
 
