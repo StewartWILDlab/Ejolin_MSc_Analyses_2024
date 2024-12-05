@@ -8,6 +8,16 @@ date: "2024-04-05"
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# README
+
+This script is used to run GLMM analyses for each ecological process (top down, bottom up, apparent competition) and compete using AIC. Committee models are what I ended up using for the thesis.
+
+This script also:
+- runs other GLMMs which include only single covariates, groups of covariates (e.g. topography), previous outdated ideas, global models, etc.
+- Tests VIF across covvariates included in models
+- Some simple summary statistics to include in early parts of the results section. 
+
+
 # Load the required packages
 
 ```{r}
@@ -39,7 +49,11 @@ levels(mod_dat_wk$target_linear)
 
 ##VIF testing
 
-The smallest possible value of VIF is one (absence of multicollinearity). As a rule of thumb, a VIF value that exceeds 5 or 10 indicates a problematic amount of collinearity (James et al. 2014). Removing the dominant landcover (SPPSLM) brings VIF down to about 1 for other landcovers in every single seasonal and spatial data set.
+Conducting VIF testing as multicollinearity seems to be a model issue when including all proportional landcovers. 
+
+The smallest possible value of VIF is one (absence of multicollinearity). As a rule of thumb, a VIF value that exceeds 5 or 10 indicates a problematic amount of collinearity (James et al. 2014). 
+
+Removing the dominant landcover (SPPSLM) brings VIF down to about 1 for other landcovers in every single seasonal and spatial data set.
 
 ```{r}
 #model with SPPSLM (highest proportion of landcovers at both spatial extents) removed
@@ -126,7 +140,7 @@ glmm_wk_lcc_tundra <- glmmTMB(Caribou ~
 summary(glmm_wk_lcc_tundra)
 ```
 
-###Treeline DIstance
+###Treeline Distance
 ```{r}
 #glmm_wk_treeline <- glmmTMB(Caribou ~ 
 #                    z.treeline_distance_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
@@ -211,9 +225,13 @@ SAME AS COMMITTEE TOP DOWN MODEL
 
 #### Bottom Up
 
-#####NOTE: Completely misinterepreted model outputs for the bottom up models. Can't include every landcover because they're proportions and essentially add up to 1 (very high multicollinearity). The intercept essentially rperesents the model if the landcovers not included were set to one (i.e. a buffer of 100% the landcovers not inclded in the model) and the effects of the landcovers in the model are being compared against this. The direction (+/-) remains the same but the exponential of the estimate is used to show magnitude of effect (e.g. if the exp(estimate) of the BAR landclass is 0.9, then there is a 10% decrease in caribou detections relative to the omitted landcovers which would be represented by 1.0).Omitting SPPSLM as it is the dominant landcover type captured within buffer areas. At the regional scale I would expect very strong negative effects of taiga-type landcovers and weaker negative effects at the local scale. May see positive effects of other landcover types or small landcovers at the local scale. 
+#####NOTE: Completely misinterepreted model outputs for the bottom up models. Can't include every landcover because they're proportions and essentially add up to 1 (very high multicollinearity). The intercept essentially rperesents the model if the landcovers not included were set to one (i.e. a buffer of 100% the landcovers not inclded in the model) and the effects of the landcovers in the model are being compared against this. The direction (+/-) remains the same but the exponential of the estimate is used to show magnitude of effect (e.g. if the exp(estimate) of the BAR landclass is 0.9, then there is a 10% decrease in caribou detections relative to the omitted landcovers which would be represented by 1.0).
 
-At the regional scale, SPTNF and TSPBDF account for under 1% of all the land captured within the buffered areas and were omitted as well. 
+Omitting SPPSLM as it is the dominant landcover type captured within buffer areas (as per previous VIF testing). 
+
+At the regional scale I would expect very strong negative effects of taiga-type landcovers and weaker negative effects at the local scale. May see positive effects of other landcover types or small landcovers at the local scale. 
+
+At the regional scale, SPTNF and TSPBDF account for under 1% of all the land captured within the buffered areas and were omitted as well to avoid rare effects. 
 
 wout target
 ```{r}
@@ -339,7 +357,7 @@ model.sel(glmm_wk_random_eff, glmm_wk_wk, glmm_wk_lcc_2, glmm_wk_dem, glmm_wk_tg
 ```
 
 ############################################################################################################################################################################################################################
-  
+
 # 2. Region, Summer detection data
 
 ```{r}
@@ -519,7 +537,7 @@ Compare with the model above. If wolf and griz have a strong effect here but ung
 
 #### Bottom Up
 
-#####NOTE: Removed TSPS due to very large standard errors. Checked VIF and very high. Removal resulted in normal values across remaining landcovers.
+#####NOTE: Removed TSPS in summer due to very large standard errors. Checked VIF and very high. Removal resulted in normal values across remaining landcovers.
 
 wo tgt
 ```{r}
@@ -644,6 +662,7 @@ model.sel(glmm_wk_smr_null, glmm_wk_smr_wk, glmm_wk_smr_lcc_2, glmm_wk_smr_dem, 
 ############################################################################################################################################################################################################################
 
 # 3. Region, Fall detection data
+
 ```{r}
 # Create a new data frame for winter
 mod_dat_wk_fall <- read.csv("Processed_Data/glmm_wk_region_fall.csv", header=T)
@@ -949,6 +968,7 @@ model.sel(glmm_wk_fall_null, glmm_wk_fall_wk, glmm_wk_fall_lcc_2, glmm_wk_fall_d
 ################################################################################################################################################################################################################################################
 
 # 4. Region, Winter detection data
+
 ```{r}
 # Create a new data frame for winter
 mod_dat_wk_winter <- read.csv("Processed_Data/glmm_wk_region_wtr.csv", header=T)
@@ -1254,6 +1274,7 @@ model.sel(glmm_wk_wtr_null, glmm_wk_wtr_wk, glmm_wk_wtr_lcc_2, glmm_wk_wtr_dem, 
 ############################################################################################################################################################################################################################
 
 # 5. Region, Spring detection data
+
 ```{r}
 # Create a new data frame for winter
 mod_dat_wk_spri <- read.csv("Processed_Data/glmm_wk_region_spr.csv", header=T)
@@ -1560,6 +1581,11 @@ model.sel(glmm_wk_spri_null, glmm_wk_spri_wk, glmm_wk_spri_lcc_2, glmm_wk_spri_d
 ################################################################################################################################################################################################################################################################################################
 
 #6. Local, Multiseason, WEEK
+
+Let's look at the same sampling periods (i.e. seasons) at the local extent only to see if things change.
+
+Predicting that habitat associations will be more varied (less stark contrast between taiga and tundra) and that other processes might be more influential than bottom-up.
+
 ```{r}
 mod_dat_wk_cbou <- read.csv("Processed_Data/glmm_wk_local_multi.csv", header=T)
 
@@ -2937,8 +2963,12 @@ model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spri_lcc_2, glmm_wk_cbou_spri_dem
 #write.csv(summary_output, file = "Tables/local_spri_lcc_2.csv", row.names = FALSE)
 ```
 
+#############################################################################################################################################################################################################################################
+
+Some simple summary statistics to include in early parts of the results section. 
 
 #11. Proportion of cameras detected
+
 ```{r}
 #cluster analysis
 tdn_clust_summaries_full<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_full.csv")
@@ -2965,7 +2995,7 @@ print(summary_df)
 
 #12. Species co-occurrences
 
-##Reg, Multi-season
+##Regional, Multi-season
 ```{r}
 # Select only the species detection columns by explicitly naming them
 co_occurrences <- mod_dat_wk %>%
@@ -2997,7 +3027,7 @@ results <- data.frame(
 print(results)
 ```
 
-##Loc, Multi-season
+##Local, Multi-season
 ```{r}
 # Select only the species detection columns by explicitly naming them
 co_occurrences <- mod_dat_wk_cbou %>%
@@ -3029,7 +3059,7 @@ results <- data.frame(
 print(results)
 ```
 
-##Loc, Summer
+##Local, Summer
 ```{r}
 # Select only the species detection columns by explicitly naming them
 co_occurrences <- mod_dat_wk_cbou_summer %>%
@@ -3061,7 +3091,7 @@ results <- data.frame(
 print(results)
 ```
 
-##Loc, Fall
+##Local, Fall
 ```{r}
 # Select only the species detection columns by explicitly naming them
 co_occurrences <- mod_dat_wk %>%
@@ -3094,7 +3124,7 @@ print(results)
 ```
 
 
-##Loc, Winter
+##Local, Winter
 
 no predator:ungulate or caribou:ungulate in the local, winter. Caribou:Wolf/ caribou:predator n=4. 
 ```{r}
@@ -3128,7 +3158,7 @@ results <- data.frame(
 print(results)
 ```
 
-##Loc, Spring
+##Local, Spring
 
 no caribou:ungulate or caribou:predator in the local spring. n=3 predator:ungulate, muskox:wolf =2, moose:grizzly = 1 
 ```{r}
@@ -3165,6 +3195,7 @@ print(results)
 #13. Targets by species
 
 looking at targets and species for the local/spring extent since that's where we got convergence issues in species/target models (but not bottom up target)
+
 ```{r}
 # Count occurrences for target_linear
 species_linear_counts <- mod_dat_wk_cbou_spri %>%
