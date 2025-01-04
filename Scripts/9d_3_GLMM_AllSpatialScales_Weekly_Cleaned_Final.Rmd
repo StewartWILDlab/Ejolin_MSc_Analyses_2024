@@ -1,0 +1,3412 @@
+---
+title: "GLMM_AllSpatialScales_Weekly_Cleaned"
+output: html_document
+date: "2024-04-05"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# README
+
+Pared down script for only the final models used in analyses. 
+
+For full list of models tested (e.g. previous ideas, global models, etc), look at 9d_GLMM_AllSpatialScales_Weekly_Cleaned.Rmd
+
+This script is used to run GLMM analyses for each ecological process (top down, bottom up, apparent competition) and compete using AIC. Committee models are what I ended up using for the thesis.
+
+This script also:
+- tests overdispersion of models to justify use of NBD over poisson
+- runs other GLMMs which include only single covariates, groups of covariates (e.g. topography), previous outdated ideas, global models, etc.
+- Tests VIF across covariates included in models
+- Some simple summary statistics to include in early parts of the results section. 
+
+
+# Load the required packages
+
+```{r}
+# Check you have them and load them
+list.of.packages <- c("kableExtra", "tidyr", "ggplot2", "gridExtra", "dplyr", "Hmsc", "jtools", "lubridate", "corrplot", "MuMIn","stringr","sf","raster","leaflet", "tidyverse","htmlwidgets","webshot", "purrr", "magick","forcats","multcomp", "reshape2", "lme4", "tidyr", "TMB", "glmmTMB", "car", "DHARMa")
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+lapply(list.of.packages, require, character.only = TRUE)
+```
+
+Landcovers are proportions and therefore don't need to be scaled as they are already between 1 and 0. topography and non-response variable species detections still need to be scaled. 
+
+# 1. Region, Multiseason detections
+```{r}
+# Import the weekly regional multiseason dataset created in 9c_GLMM_Create_Datasets
+mod_dat_wk <- read.csv("Processed_Data/glmm_wk_region_multi.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk$target_cons <- fct_relevel(mod_dat_wk$target_cons, "None")
+mod_dat_wk$target_hydro <- fct_relevel(mod_dat_wk$target_hydro, "None")
+mod_dat_wk$target_linear <- fct_relevel(mod_dat_wk$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk$target_cons)
+levels(mod_dat_wk$target_hydro)
+levels(mod_dat_wk$target_linear)
+```
+
+##VIF testing
+
+Conducting VIF testing as multicollinearity seems to be a model issue when including all proportional landcovers. 
+
+The smallest possible value of VIF is one (absence of multicollinearity). As a rule of thumb, a VIF value that exceeds 5 or 10 indicates a problematic amount of collinearity (James et al. 2014). 
+
+Removing the dominant landcover (SPPSLM) brings VIF down to about 1 for other landcovers in every single seasonal and spatial data set.
+
+```{r}
+#model with SPPSLM (highest proportion of landcovers at both spatial extents) removed
+model1<- glm(Caribou ~ z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_TSPS + z.X300_BAR, data=mod_dat_wk, family = "poisson")
+
+vif(model1)
+
+#model with SPPSLM 
+model2<- glm(Caribou ~ z.X300_SPPSLM + z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_TSPS + z.X300_BAR, data=mod_dat_wk, family = "poisson")
+
+vif(model2)
+```
+
+##Simple Models
+let's run a couple super simple models, one with a random effect and one with the survey effort offset and no extra covariates:
+```{r}
+# GLMM with only a random effect
+glmm_wk_random <- glmmTMB(Caribou ~ 1 + (1 | location_site), data = mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_random)
+
+#GLMM with random and survey effort
+
+glmm_wk_random_eff <- glmmTMB(Caribou ~ 1 +  offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_random_eff)
+```
+
+
+```{r}
+#GLMM with random, survey effort, snow season
+glmm_wk_snowssn <- glmmTMB(Caribou ~ 1 + snow_season + offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_snowssn)
+
+#GLMM with random, survey effort, four season
+glmm_wk_fourssn <- glmmTMB(Caribou ~ 1 + four_season + offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fourssn)
+
+#GLMM with random, survey effort, week.
+glmm_wk_wk <- glmmTMB(Caribou ~ 1 + week + offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wk)
+```
+
+## Target
+```{r}
+glmm_wk_tgt <- glmmTMB(Caribou ~ 
+                     target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_tgt)
+
+glmm_wk_tgt_h <- glmmTMB(Caribou ~ 
+                     target_hydro  + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_tgt_h)
+
+glmm_wk_tgt_l <- glmmTMB(Caribou ~ 
+                     target_linear  + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_tgt_l)
+```
+
+## Committee Models
+
+#### Bottom Up
+
+#####NOTE: Completely misinterepreted model outputs for the bottom up models. Can't include every landcover because they're proportions and essentially add up to 1 (very high multicollinearity). The intercept essentially rperesents the model if the landcovers not included were set to one (i.e. a buffer of 100% the landcovers not inclded in the model) and the effects of the landcovers in the model are being compared against this. The direction (+/-) remains the same but the exponential of the estimate is used to show magnitude of effect (e.g. if the exp(estimate) of the BAR landclass is 0.9, then there is a 10% decrease in caribou detections relative to the omitted landcovers which would be represented by 1.0).
+
+Omitting SPPSLM as it is the dominant landcover type captured within buffer areas (as per previous VIF testing). 
+
+At the regional scale I would expect very strong negative effects of taiga-type landcovers and weaker negative effects at the local scale. May see positive effects of other landcover types or small landcovers at the local scale. 
+
+At the regional scale, SPTNF and TSPBDF account for under 1% of all the land captured within the buffered areas and were omitted as well to avoid rare effects. 
+
+wout target
+```{r}
+glmm_wk_comm_bu <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_comm_bu)
+```
+
+wtarget
+```{r}
+glmm_wk_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_comm_bu_tgt)
+```
+
+
+#### Top Down
+
+wout target
+```{r}
+glmm_wk_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_comm_td)
+```
+
+w target
+```{r}
+glmm_wk_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear  + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_comm_td_tgt)
+```
+
+####Apparent Competition
+
+w target
+```{r}
+glmm_wk_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_comm_app_tgt)
+```
+
+wout target
+```{r}
+glmm_wk_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_comm_app)
+```
+
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_comm_app_3_tgt)
+```
+
+###Committee Model Selection
+```{r}
+model.sel(glmm_wk_random_eff, glmm_wk_wk, glmm_wk_tgt, glmm_wk_tgt_h, glmm_wk_tgt_l, glmm_wk_comm_bu, glmm_wk_comm_td, glmm_wk_comm_app, glmm_wk_comm_bu_tgt, glmm_wk_comm_td_tgt, glmm_wk_comm_app_tgt, glmm_wk_comm_app_2, glmm_wk_comm_app_2_tgt, glmm_wk_comm_app_3, glmm_wk_comm_app_3_tgt)
+```
+
+###Over-dispersion Testing
+
+Null Model
+```{r}
+# Poisson version of the random effects model
+poisson_random_eff <- glmmTMB(Caribou ~ 1 + offset(log(n_days_effort)) + (1 | location_site), 
+                              data = mod_dat_wk, 
+                              family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio <- deviance(poisson_random_eff) / df.residual(poisson_random_eff)
+dispersion_ratio  # >1.5 suggests overdispersion
+
+# DHARMa check
+library(DHARMa)
+sim_res <- simulateResiduals(fittedModel = poisson_random_eff)
+testDispersion(sim_res)
+```
+
+Bottom Up
+```{r}
+# Poisson version of the Bottom-Up model
+poisson_comm_bu <- glmmTMB(Caribou ~ z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                           z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + 
+                           offset(log(n_days_effort)) + (1 | location_site), 
+                           data = mod_dat_wk, 
+                           family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio_comm_bu <- deviance(poisson_comm_bu) / df.residual(poisson_comm_bu)
+dispersion_ratio_comm_bu
+
+# DHARMa check
+sim_res_comm_bu <- simulateResiduals(fittedModel = poisson_comm_bu)
+testDispersion(sim_res_comm_bu)
+
+# Poisson version of the Bottom-Up model with target variables
+poisson_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                  z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + 
+                  z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_bu_tgt <- deviance(poisson_comm_bu_tgt) / df.residual(poisson_comm_bu_tgt)
+dispersion_ratio_bu_tgt
+
+sim_res_bu_tgt <- simulateResiduals(fittedModel = poisson_comm_bu_tgt)
+testDispersion(sim_res_bu_tgt)
+```
+
+Top Down
+```{r}
+# Poisson version of the Top-Down model without target variables
+poisson_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td <- deviance(poisson_comm_td) / df.residual(poisson_comm_td)
+dispersion_ratio_td
+
+sim_res_td <- simulateResiduals(fittedModel = poisson_comm_td)
+testDispersion(sim_res_td)
+
+# Poisson version of the Top-Down model with target variables
+poisson_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td_tgt <- deviance(poisson_comm_td_tgt) / df.residual(poisson_comm_td_tgt)
+dispersion_ratio_td_tgt
+
+sim_res_td_tgt <- simulateResiduals(fittedModel = poisson_comm_td_tgt)
+testDispersion(sim_res_td_tgt)
+
+```
+
+Apparent Competition
+```{r}
+# Poisson version of the Apparent Competition model without target variables
+poisson_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app <- deviance(poisson_comm_app) / df.residual(poisson_comm_app)
+dispersion_ratio_app
+
+sim_res_app <- simulateResiduals(fittedModel = poisson_comm_app)
+testDispersion(sim_res_app)
+
+# Poisson version of the Apparent Competition model with target variables
+poisson_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app_tgt <- deviance(poisson_comm_app_tgt) / df.residual(poisson_comm_app_tgt)
+dispersion_ratio_app_tgt
+
+sim_res_app_tgt <- simulateResiduals(fittedModel = poisson_comm_app_tgt)
+testDispersion(sim_res_app_tgt)
+
+```
+
+#### Poisson Model Selection
+```{r}
+model.sel(poisson_random_eff, poisson_comm_bu, poisson_comm_td, poisson_comm_app, poisson_comm_bu_tgt, poisson_comm_td_tgt, poisson_comm_app_tgt)
+```
+
+
+#############################################################################################
+
+## Model Selection
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+#summary_output <- capture.output(model.sel(glmm_wk_random_eff, glmm_wk_wk, glmm_wk_comm_bu, glmm_wk_comm_td, glmm_wk_comm_bu_tgt, glmm_wk_comm_td_tgt, glmm_wk_comm_app_2, glmm_wk_comm_app_2_tgt, glmm_wk_comm_app_3, glmm_wk_comm_app_3_tgt))
+
+# Save the model selection to a CSV file
+#write.csv(summary_output, file = "Tables/region_multi_models_fnl.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+#summary_output <- capture.output(summary(glmm_wk_wk))
+
+# Save the summary data to a CSV file
+#write.csv(summary_output, file = "Tables/region_multi_wk.csv.csv", row.names = FALSE)
+```
+
+############################################################################################################################################################################################################################
+
+# 2. Region, Summer detection data
+
+```{r}
+# Import the weekly regional summer dataset created in 9c_GLMM_Create_Datasets
+mod_dat_wk_summer <- read.csv("Processed_Data/glmm_wk_region_smr.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_summer$target_cons <- fct_relevel(mod_dat_wk_summer$target_cons, "None")
+mod_dat_wk_summer$target_hydro <- fct_relevel(mod_dat_wk_summer$target_hydro, "None")
+mod_dat_wk_summer$target_linear <- fct_relevel(mod_dat_wk_summer$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_summer$target_cons)
+levels(mod_dat_wk_summer$target_hydro)
+levels(mod_dat_wk_summer$target_linear)
+```
+
+##Simple Models
+```{r}
+#null model
+glmm_wk_smr_null <- glmmTMB(Caribou ~ 
+                     offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+summary(glmm_wk_smr_null)
+
+#week model
+glmm_wk_smr_wk <- glmmTMB(Caribou ~ 
+                     week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+summary(glmm_wk_smr_wk)
+```
+
+## Target
+```{r}
+glmm_wk_smr_tgt <- glmmTMB(Caribou ~ 
+                     target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_smr_tgt)
+
+glmm_wk_smr_tgt_h <- glmmTMB(Caribou ~ 
+                     target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_smr_tgt_h)
+
+glmm_wk_smr_tgt_l <- glmmTMB(Caribou ~ 
+                     target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_smr_tgt_l)
+```
+
+## Committee Models
+
+#### Bottom Up
+
+#####NOTE: Removed TSPS in summer due to very large standard errors. Checked VIF and very high. Removal resulted in normal values across remaining landcovers.
+
+wo tgt
+```{r}
+glmm_wk_smr_comm_bu <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_smr_comm_bu)
+```
+
+w tgt
+```{r}
+glmm_wk_smr_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_smr_comm_bu_tgt)
+```
+
+#### Top Down
+wo tgt
+```{r}
+glmm_wk_smr_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_smr_comm_td)
+```
+
+w tgt
+```{r}
+glmm_wk_smr_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_smr_comm_td_tgt)
+```
+
+####Apparent Competition
+wo tgt
+```{r}
+glmm_wk_smr_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_smr_comm_app)
+```
+
+w tgt
+```{r}
+glmm_wk_smr_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_smr_comm_app_tgt)
+```
+
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_smr_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_smr_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_smr_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_smr_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_smr_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_smr_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_smr_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_smr_comm_app_3_tgt)
+```
+
+####Committee Model Selection
+```{r}
+model.sel(glmm_wk_smr_wk, glmm_wk_smr_null, glmm_wk_smr_tgt_h, glmm_wk_smr_tgt_l, glmm_wk_smr_comm_bu, glmm_wk_smr_comm_td, glmm_wk_smr_comm_app, glmm_wk_smr_comm_bu_tgt, glmm_wk_smr_comm_td_tgt, glmm_wk_smr_comm_app_tgt, glmm_wk_smr_comm_app_2, glmm_wk_smr_comm_app_2_tgt, glmm_wk_smr_comm_app_3, glmm_wk_smr_comm_app_3_tgt)
+```
+
+###Over-dispersion Testing
+
+Null Model
+```{r}
+# Poisson version of the random effects model
+poisson_random_eff <- glmmTMB(Caribou ~ 1 + offset(log(n_days_effort)) + (1 | location_site), 
+                              data = mod_dat_wk_summer, 
+                              family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio <- deviance(poisson_random_eff) / df.residual(poisson_random_eff)
+dispersion_ratio  # >1.5 suggests overdispersion
+
+# DHARMa check
+library(DHARMa)
+sim_res <- simulateResiduals(fittedModel = poisson_random_eff)
+testDispersion(sim_res)
+```
+
+Bottom Up
+```{r}
+# Poisson version of the Bottom-Up model
+poisson_comm_bu <- glmmTMB(Caribou ~ z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                           z.X300_MF + z.X300_TSPG + z.X300_BAR + 
+                           offset(log(n_days_effort)) + (1 | location_site), 
+                           data = mod_dat_wk_summer, 
+                           family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio_comm_bu <- deviance(poisson_comm_bu) / df.residual(poisson_comm_bu)
+dispersion_ratio_comm_bu
+
+# DHARMa check
+sim_res_comm_bu <- simulateResiduals(fittedModel = poisson_comm_bu)
+testDispersion(sim_res_comm_bu)
+
+# Poisson version of the Bottom-Up model with target variables
+poisson_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                  z.X300_MF + z.X300_TSPG + z.X300_BAR + 
+                  z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_summer, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_bu_tgt <- deviance(poisson_comm_bu_tgt) / df.residual(poisson_comm_bu_tgt)
+dispersion_ratio_bu_tgt
+
+sim_res_bu_tgt <- simulateResiduals(fittedModel = poisson_comm_bu_tgt)
+testDispersion(sim_res_bu_tgt)
+```
+
+Top Down
+```{r}
+# Poisson version of the Top-Down model without target variables
+poisson_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_summer, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td <- deviance(poisson_comm_td) / df.residual(poisson_comm_td)
+dispersion_ratio_td
+
+sim_res_td <- simulateResiduals(fittedModel = poisson_comm_td)
+testDispersion(sim_res_td)
+
+# Poisson version of the Top-Down model with target variables
+poisson_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_summer, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td_tgt <- deviance(poisson_comm_td_tgt) / df.residual(poisson_comm_td_tgt)
+dispersion_ratio_td_tgt
+
+sim_res_td_tgt <- simulateResiduals(fittedModel = poisson_comm_td_tgt)
+testDispersion(sim_res_td_tgt)
+
+```
+
+Apparent Competition
+```{r}
+# Poisson version of the Apparent Competition model without target variables
+poisson_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_summer, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app <- deviance(poisson_comm_app) / df.residual(poisson_comm_app)
+dispersion_ratio_app
+
+sim_res_app <- simulateResiduals(fittedModel = poisson_comm_app)
+testDispersion(sim_res_app)
+
+# Poisson version of the Apparent Competition model with target variables
+poisson_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_summer, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app_tgt <- deviance(poisson_comm_app_tgt) / df.residual(poisson_comm_app_tgt)
+dispersion_ratio_app_tgt
+
+sim_res_app_tgt <- simulateResiduals(fittedModel = poisson_comm_app_tgt)
+testDispersion(sim_res_app_tgt)
+
+```
+
+#### Poisson Model Selection
+```{r}
+model.sel(poisson_random_eff, poisson_comm_bu, poisson_comm_td, poisson_comm_app, poisson_comm_bu_tgt, poisson_comm_td_tgt, poisson_comm_app_tgt)
+```
+
+#############################################################################################
+
+## Model Selection
+```{r}
+model.sel(glmm_wk_smr_null, glmm_wk_smr_wk, glmm_wk_smr_lcc_2, glmm_wk_smr_dem, glmm_wk_smr_tgt_h, glmm_wk_smr_tgt_l, glmm_wk_smr_ung, glmm_wk_smr_comm_bu, glmm_wk_smr_comm_td, glmm_wk_smr_comm_app, glmm_wk_smr_esker, glmm_wk_smr_comm_bu_tgt, glmm_wk_smr_comm_td_tgt, glmm_wk_smr_comm_app_tgt)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+#summary_output <- capture.output(model.sel(glmm_wk_smr_null, glmm_wk_smr_comm_bu, glmm_wk_smr_comm_td, glmm_wk_smr_comm_bu_tgt, glmm_wk_smr_comm_td_tgt, glmm_wk_smr_comm_app_2, glmm_wk_smr_comm_app_2_tgt, glmm_wk_smr_comm_app_3, glmm_wk_smr_comm_app_3_tgt))
+
+# Save the model selection to a CSV file
+#write.csv(summary_output, file = "Tables/region_smr_models_fnl.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+#summary_output <- capture.output(summary(glmm_wk_smr_comm_bu_tgt))
+
+# Save the summary data to a CSV file
+#write.csv(summary_output, file = "Tables/region_smr_comm_bu_tgt.csv", row.names = FALSE)
+```
+
+############################################################################################################################################################################################################################
+
+# 3. Region, Fall detection data
+
+```{r}
+# Create a new data frame for winter
+mod_dat_wk_fall <- read.csv("Processed_Data/glmm_wk_region_fall.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_fall$target_cons <- fct_relevel(mod_dat_wk_fall$target_cons, "None")
+mod_dat_wk_fall$target_hydro <- fct_relevel(mod_dat_wk_fall$target_hydro, "None")
+mod_dat_wk_fall$target_linear <- fct_relevel(mod_dat_wk_fall$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_fall$target_cons)
+levels(mod_dat_wk_fall$target_hydro)
+levels(mod_dat_wk_fall$target_linear)
+```
+
+##Simple Models
+```{r}
+#null model
+glmm_wk_fall_null <- glmmTMB(Caribou ~ 
+                     offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fall_null)
+
+#week model
+glmm_wk_fall_wk <- glmmTMB(Caribou ~ 
+                     week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fall_wk)
+```
+
+## Target
+```{r}
+glmm_wk_fall_tgt <- glmmTMB(Caribou ~ 
+                     target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_fall_tgt)
+
+glmm_wk_fall_tgt_h <- glmmTMB(Caribou ~ 
+                     target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_fall_tgt_h)
+
+glmm_wk_fall_tgt_l <- glmmTMB(Caribou ~ 
+                     target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_fall_tgt_l)
+```
+
+## Committee Models
+
+#### Bottom Up
+wo target
+```{r}
+glmm_wk_fll_comm_bu <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fll_comm_bu)
+```
+
+target
+```{r}
+glmm_wk_fll_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fll_comm_bu_tgt)
+```
+
+#### Top Down
+wo target
+```{r}
+glmm_wk_fll_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fll_comm_td)
+```
+
+w target
+```{r}
+glmm_wk_fll_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fll_comm_td_tgt)
+```
+
+####Apparent Competition
+wo target
+```{r}
+glmm_wk_fll_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fll_comm_app)
+```
+
+w target
+```{r}
+glmm_wk_fll_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fll_comm_app_tgt)
+```
+
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_fall_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fall_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_fall_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fall_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_fall_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fall_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_fall_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_fall_comm_app_3_tgt)
+```
+
+
+####Committee Model Selection
+```{r}
+model.sel(glmm_wk_fall_wk, glmm_wk_fall_null, glmm_wk_fall_tgt_h, glmm_wk_fall_tgt_l, glmm_wk_fll_comm_bu, glmm_wk_fll_comm_td, glmm_wk_fll_comm_app, glmm_wk_fll_comm_bu_tgt, glmm_wk_fll_comm_td_tgt, glmm_wk_fll_comm_app_tgt, glmm_wk_fall_comm_app_2_tgt, glmm_wk_fall_comm_app_2, glmm_wk_fall_comm_app_3, glmm_wk_fall_comm_app_3_tgt)
+```
+
+##############################################################################
+
+###Over-dispersion Testing
+
+Null Model
+```{r}
+# Poisson version of the random effects model
+poisson_random_eff <- glmmTMB(Caribou ~ 1 + offset(log(n_days_effort)) + (1 | location_site), 
+                              data = mod_dat_wk_fall, 
+                              family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio <- deviance(poisson_random_eff) / df.residual(poisson_random_eff)
+dispersion_ratio  # >1.5 suggests overdispersion
+
+# DHARMa check
+library(DHARMa)
+sim_res <- simulateResiduals(fittedModel = poisson_random_eff)
+testDispersion(sim_res)
+```
+
+Bottom Up
+```{r}
+# Poisson version of the Bottom-Up model
+poisson_comm_bu <- glmmTMB(Caribou ~ z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                           z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + 
+                           offset(log(n_days_effort)) + (1 | location_site), 
+                           data = mod_dat_wk_fall, 
+                           family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio_comm_bu <- deviance(poisson_comm_bu) / df.residual(poisson_comm_bu)
+dispersion_ratio_comm_bu
+
+# DHARMa check
+sim_res_comm_bu <- simulateResiduals(fittedModel = poisson_comm_bu)
+testDispersion(sim_res_comm_bu)
+
+# Poisson version of the Bottom-Up model with target variables
+poisson_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                  z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + 
+                  z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_fall, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_bu_tgt <- deviance(poisson_comm_bu_tgt) / df.residual(poisson_comm_bu_tgt)
+dispersion_ratio_bu_tgt
+
+sim_res_bu_tgt <- simulateResiduals(fittedModel = poisson_comm_bu_tgt)
+testDispersion(sim_res_bu_tgt)
+```
+
+Top Down
+```{r}
+# Poisson version of the Top-Down model without target variables
+poisson_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) +  
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_fall, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td <- deviance(poisson_comm_td) / df.residual(poisson_comm_td)
+dispersion_ratio_td
+
+sim_res_td <- simulateResiduals(fittedModel = poisson_comm_td)
+testDispersion(sim_res_td)
+
+# Poisson version of the Top-Down model with target variables
+poisson_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) +  
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_fall, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td_tgt <- deviance(poisson_comm_td_tgt) / df.residual(poisson_comm_td_tgt)
+dispersion_ratio_td_tgt
+
+sim_res_td_tgt <- simulateResiduals(fittedModel = poisson_comm_td_tgt)
+testDispersion(sim_res_td_tgt)
+
+```
+
+Apparent Competition
+```{r}
+# Poisson version of the Apparent Competition model without target variables
+poisson_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_fall, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app <- deviance(poisson_comm_app) / df.residual(poisson_comm_app)
+dispersion_ratio_app
+
+sim_res_app <- simulateResiduals(fittedModel = poisson_comm_app)
+testDispersion(sim_res_app)
+
+# Poisson version of the Apparent Competition model with target variables
+poisson_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_fall, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app_tgt <- deviance(poisson_comm_app_tgt) / df.residual(poisson_comm_app_tgt)
+dispersion_ratio_app_tgt
+
+sim_res_app_tgt <- simulateResiduals(fittedModel = poisson_comm_app_tgt)
+testDispersion(sim_res_app_tgt)
+
+```
+
+#### Poisson Model Selection
+```{r}
+model.sel(poisson_random_eff, poisson_comm_bu, poisson_comm_td, poisson_comm_app, poisson_comm_bu_tgt, poisson_comm_td_tgt, poisson_comm_app_tgt)
+```
+
+#############################################################################################
+
+## Model Selection
+```{r}
+model.sel(glmm_wk_fall_null, glmm_wk_fall_wk, glmm_wk_fall_lcc_2, glmm_wk_fall_dem, glmm_wk_fall_tgt_h, glmm_wk_fall_tgt_l, glmm_wk_fall_ung, glmm_wk_fll_comm_bu, glmm_wk_fll_comm_td, glmm_wk_fll_comm_app, glmm_wk_fll_comm_bu_tgt, glmm_wk_fll_comm_td_tgt, glmm_wk_fll_comm_app_tgt, glmm_wk_fall_esker, glmm_wk_fall_comm_app_2_tgt, glmm_wk_fall_comm_app_2, glmm_wk_fall_comm_app_3, glmm_wk_fall_comm_app_3_tgt)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+#summary_output <- capture.output(model.sel(glmm_wk_fall_null, glmm_wk_fll_comm_bu, glmm_wk_fll_comm_td, glmm_wk_fll_comm_bu_tgt, glmm_wk_fll_comm_td_tgt, glmm_wk_fall_comm_app_2_tgt, glmm_wk_fall_comm_app_2, glmm_wk_fall_comm_app_3, glmm_wk_fall_comm_app_3_tgt))
+
+# Save the model selection to a CSV file
+#write.csv(summary_output, file = "Tables/region_fll_models_fnl.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+#summary_output <- capture.output(summary(glmm_wk_fll_comm_bu))
+
+# Save the summary data to a CSV file
+#write.csv(summary_output, file = "Tables/region_fll_comm_bu.csv", row.names = FALSE)
+```
+
+################################################################################################################################################################################################################################################
+
+# 4. Region, Winter detection data
+
+```{r}
+# Create a new data frame for winter
+mod_dat_wk_winter <- read.csv("Processed_Data/glmm_wk_region_wtr.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_winter$target_cons <- fct_relevel(mod_dat_wk_winter$target_cons, "None")
+mod_dat_wk_winter$target_hydro <- fct_relevel(mod_dat_wk_winter$target_hydro, "None")
+mod_dat_wk_winter$target_linear <- fct_relevel(mod_dat_wk_winter$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_winter$target_cons)
+levels(mod_dat_wk_winter$target_hydro)
+levels(mod_dat_wk_winter$target_linear)
+```
+
+##Simple Models
+```{r}
+#null model
+glmm_wk_wtr_null <- glmmTMB(Caribou ~ 
+                     offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wtr_null)
+
+#week model
+glmm_wk_wtr_wk <- glmmTMB(Caribou ~ 
+                     week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wtr_wk)
+```
+
+## Target
+```{r}
+glmm_wk_wtr_tgt <- glmmTMB(Caribou ~ 
+                     target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_wtr_tgt)
+
+glmm_wk_wtr_tgt_h <- glmmTMB(Caribou ~ 
+                     target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_wtr_tgt_h)
+
+glmm_wk_wtr_tgt_l <- glmmTMB(Caribou ~ 
+                     target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_wtr_tgt_l)
+```
+
+## Committee Models
+
+#### Bottom Up
+wo target
+```{r}
+glmm_wk_wtr_comm_bu <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wtr_comm_bu)
+```
+
+w target
+```{r}
+glmm_wk_wtr_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wtr_comm_bu_tgt)
+```
+
+#### Top Down
+wo target
+```{r}
+glmm_wk_wtr_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wtr_comm_td)
+```
+
+w target
+```{r}
+glmm_wk_wtr_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wtr_comm_td_tgt)
+```
+
+####Apparent Competition
+wo target
+```{r}
+glmm_wk_wtr_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wtr_comm_app)
+```
+
+w target
+```{r}
+glmm_wk_wtr_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_linear + target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wtr_comm_app_tgt)
+```
+
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_wtr_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wtr_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_wtr_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wtr_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_wtr_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wtr_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_wtr_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_wtr_comm_app_3_tgt)
+```
+
+
+####Committee Model Selection
+```{r}
+model.sel(glmm_wk_wtr_null, glmm_wk_wtr_tgt_l, glmm_wk_wtr_tgt_h, glmm_wk_wtr_comm_bu, glmm_wk_wtr_comm_td, glmm_wk_wtr_comm_app, glmm_wk_wtr_comm_bu_tgt, glmm_wk_wtr_comm_td_tgt, glmm_wk_wtr_comm_app_tgt, glmm_wk_wtr_comm_app_2, glmm_wk_wtr_comm_app_2_tgt, glmm_wk_wtr_comm_app_3, glmm_wk_wtr_comm_app_3_tgt)
+```
+
+##############################################################################
+
+###Over-dispersion Testing
+
+Null Model
+```{r}
+# Poisson version of the random effects model
+poisson_random_eff <- glmmTMB(Caribou ~ 1 + offset(log(n_days_effort)) + (1 | location_site), 
+                              data = mod_dat_wk_winter, 
+                              family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio <- deviance(poisson_random_eff) / df.residual(poisson_random_eff)
+dispersion_ratio  # >1.5 suggests overdispersion
+
+# DHARMa check
+library(DHARMa)
+sim_res <- simulateResiduals(fittedModel = poisson_random_eff)
+testDispersion(sim_res)
+```
+
+Bottom Up
+```{r}
+# Poisson version of the Bottom-Up model
+poisson_comm_bu <- glmmTMB(Caribou ~ z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                           z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + 
+                           offset(log(n_days_effort)) + (1 | location_site), 
+                           data = mod_dat_wk_winter, 
+                           family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio_comm_bu <- deviance(poisson_comm_bu) / df.residual(poisson_comm_bu)
+dispersion_ratio_comm_bu
+
+# DHARMa check
+sim_res_comm_bu <- simulateResiduals(fittedModel = poisson_comm_bu)
+testDispersion(sim_res_comm_bu)
+
+# Poisson version of the Bottom-Up model with target variables
+poisson_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                  z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + 
+                  z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_winter, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_bu_tgt <- deviance(poisson_comm_bu_tgt) / df.residual(poisson_comm_bu_tgt)
+dispersion_ratio_bu_tgt
+
+sim_res_bu_tgt <- simulateResiduals(fittedModel = poisson_comm_bu_tgt)
+testDispersion(sim_res_bu_tgt)
+```
+
+Top Down
+```{r}
+# Poisson version of the Top-Down model without target variables
+poisson_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) +  
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_winter, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td <- deviance(poisson_comm_td) / df.residual(poisson_comm_td)
+dispersion_ratio_td
+
+sim_res_td <- simulateResiduals(fittedModel = poisson_comm_td)
+testDispersion(sim_res_td)
+
+# Poisson version of the Top-Down model with target variables
+poisson_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) +  
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_winter, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td_tgt <- deviance(poisson_comm_td_tgt) / df.residual(poisson_comm_td_tgt)
+dispersion_ratio_td_tgt
+
+sim_res_td_tgt <- simulateResiduals(fittedModel = poisson_comm_td_tgt)
+testDispersion(sim_res_td_tgt)
+
+```
+
+Apparent Competition
+```{r}
+# Poisson version of the Apparent Competition model without target variables
+poisson_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_winter, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app <- deviance(poisson_comm_app) / df.residual(poisson_comm_app)
+dispersion_ratio_app
+
+sim_res_app <- simulateResiduals(fittedModel = poisson_comm_app)
+testDispersion(sim_res_app)
+
+# Poisson version of the Apparent Competition model with target variables
+poisson_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_winter, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app_tgt <- deviance(poisson_comm_app_tgt) / df.residual(poisson_comm_app_tgt)
+dispersion_ratio_app_tgt
+
+sim_res_app_tgt <- simulateResiduals(fittedModel = poisson_comm_app_tgt)
+testDispersion(sim_res_app_tgt)
+
+```
+
+#### Poisson Model Selection
+```{r}
+model.sel(poisson_random_eff, poisson_comm_bu, poisson_comm_td, poisson_comm_app, poisson_comm_bu_tgt, poisson_comm_td_tgt, poisson_comm_app_tgt)
+```
+
+#############################################################################################
+
+## Model Selection
+```{r}
+model.sel(glmm_wk_wtr_null, glmm_wk_wtr_wk, glmm_wk_wtr_lcc_2, glmm_wk_wtr_dem, glmm_wk_wtr_tgt_l, glmm_wk_wtr_tgt_h, glmm_wk_wtr_ung, glmm_wk_wtr_comm_bu, glmm_wk_wtr_comm_td, glmm_wk_wtr_comm_app, glmm_wk_wtr_comm_bu_tgt, glmm_wk_wtr_comm_td_tgt, glmm_wk_wtr_comm_app_tgt, glmm_wk_wtr_esker, glmm_wk_wtr_comm_app_2, glmm_wk_wtr_comm_app_2_tgt, glmm_wk_wtr_comm_app_3, glmm_wk_wtr_comm_app_3_tgt)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+#summary_output <- capture.output(model.sel(glmm_wk_wtr_null, glmm_wk_wtr_comm_bu, glmm_wk_wtr_comm_td, glmm_wk_wtr_comm_bu_tgt, glmm_wk_wtr_comm_td_tgt, glmm_wk_wtr_comm_app_2, glmm_wk_wtr_comm_app_2_tgt, glmm_wk_wtr_comm_app_3, glmm_wk_wtr_comm_app_3_tgt))
+
+# Save the model selection to a CSV file
+#write.csv(summary_output, file = "Tables/region_wtr_models_fnl.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+#summary_output <- capture.output(summary(glmm_wk_wtr_comm_bu))
+
+# Save the summary data to a CSV file
+#write.csv(summary_output, file = "Tables/region_wtr_bu.csv", row.names = FALSE)
+```
+
+############################################################################################################################################################################################################################
+
+# 5. Region, Spring detection data
+
+```{r}
+# Create a new data frame for winter
+mod_dat_wk_spri <- read.csv("Processed_Data/glmm_wk_region_spr.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_spri$target_cons <- fct_relevel(mod_dat_wk_spri$target_cons, "None")
+mod_dat_wk_spri$target_hydro <- fct_relevel(mod_dat_wk_spri$target_hydro, "None")
+mod_dat_wk_spri$target_linear <- fct_relevel(mod_dat_wk_spri$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_spri$target_cons)
+levels(mod_dat_wk_spri$target_hydro)
+levels(mod_dat_wk_spri$target_linear)
+```
+
+##Simple Models
+```{r}
+#null model
+glmm_wk_spri_null <- glmmTMB(Caribou ~ 
+                     offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_spri_null)
+
+#week model
+glmm_wk_spri_wk <- glmmTMB(Caribou ~ 
+                     week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_spri_wk)
+```
+
+## Target
+```{r}
+glmm_wk_spri_tgt <- glmmTMB(Caribou ~ 
+                     target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_spri_tgt)
+
+glmm_wk_spri_tgt_h <- glmmTMB(Caribou ~ 
+                     target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_spri_tgt_h)
+
+glmm_wk_spri_tgt_l <- glmmTMB(Caribou ~ 
+                     target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_spri_tgt_l)
+```
+
+## Committee Models
+
+Uber simple models that the committee wants run on every data set and in every season
+
+#### Bottom Up
+wo target
+```{r}
+glmm_wk_spr_comm_bu <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_spr_comm_bu)
+```
+
+wtarget
+```{r}
+glmm_wk_spr_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_spr_comm_bu_tgt)
+```
+
+#### Top Down
+wo target
+```{r}
+glmm_wk_spr_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_spr_comm_td)
+```
+
+wtarget
+```{r}
+glmm_wk_spr_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_spr_comm_td_tgt)
+```
+
+####Apparent Competition
+wo target
+```{r}
+glmm_wk_spr_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_spr_comm_app)
+```
+
+wtarget
+```{r}
+glmm_wk_spr_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_spr_comm_app_tgt)
+```
+
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_spr_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_spr_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_spr_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_spr_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_spr_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_spr_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_spr_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_spr_comm_app_3_tgt)
+```
+
+
+####Committee Model Selection
+```{r}
+model.sel(glmm_wk_spri_null, glmm_wk_spri_tgt_h, glmm_wk_spri_tgt_l, glmm_wk_spr_comm_bu, glmm_wk_spr_comm_td, glmm_wk_spr_comm_app, glmm_wk_spr_comm_bu_tgt, glmm_wk_spr_comm_td_tgt, glmm_wk_spr_comm_app_tgt, glmm_wk_spr_comm_app_2, glmm_wk_spr_comm_app_2_tgt, glmm_wk_spr_comm_app_3, glmm_wk_spr_comm_app_3_tgt)
+```
+
+##############################################################################
+
+###Over-dispersion Testing
+
+Null Model
+```{r}
+# Poisson version of the random effects model
+poisson_random_eff <- glmmTMB(Caribou ~ 1 + offset(log(n_days_effort)) + (1 | location_site), 
+                              data = mod_dat_wk_spri, 
+                              family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio <- deviance(poisson_random_eff) / df.residual(poisson_random_eff)
+dispersion_ratio  # >1.5 suggests overdispersion
+
+# DHARMa check
+library(DHARMa)
+sim_res <- simulateResiduals(fittedModel = poisson_random_eff)
+testDispersion(sim_res)
+```
+
+Bottom Up
+```{r}
+# Poisson version of the Bottom-Up model
+poisson_comm_bu <- glmmTMB(Caribou ~ z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                           z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + 
+                           offset(log(n_days_effort)) + (1 | location_site), 
+                           data = mod_dat_wk_spri, 
+                           family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio_comm_bu <- deviance(poisson_comm_bu) / df.residual(poisson_comm_bu)
+dispersion_ratio_comm_bu
+
+# DHARMa check
+sim_res_comm_bu <- simulateResiduals(fittedModel = poisson_comm_bu)
+testDispersion(sim_res_comm_bu)
+
+# Poisson version of the Bottom-Up model with target variables
+poisson_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                  z.X300_MF + z.X300_TSPS + z.X300_TSPG + z.X300_BAR + 
+                  z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_spri, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_bu_tgt <- deviance(poisson_comm_bu_tgt) / df.residual(poisson_comm_bu_tgt)
+dispersion_ratio_bu_tgt
+
+sim_res_bu_tgt <- simulateResiduals(fittedModel = poisson_comm_bu_tgt)
+testDispersion(sim_res_bu_tgt)
+```
+
+Top Down
+```{r}
+# Poisson version of the Top-Down model without target variables
+poisson_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) +  
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_spri, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td <- deviance(poisson_comm_td) / df.residual(poisson_comm_td)
+dispersion_ratio_td
+
+sim_res_td <- simulateResiduals(fittedModel = poisson_comm_td)
+testDispersion(sim_res_td)
+
+# Poisson version of the Top-Down model with target variables
+poisson_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) +  
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_spri, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td_tgt <- deviance(poisson_comm_td_tgt) / df.residual(poisson_comm_td_tgt)
+dispersion_ratio_td_tgt
+
+sim_res_td_tgt <- simulateResiduals(fittedModel = poisson_comm_td_tgt)
+testDispersion(sim_res_td_tgt)
+
+```
+
+Apparent Competition
+```{r}
+# Poisson version of the Apparent Competition model without target variables
+poisson_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_spri, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app <- deviance(poisson_comm_app) / df.residual(poisson_comm_app)
+dispersion_ratio_app
+
+sim_res_app <- simulateResiduals(fittedModel = poisson_comm_app)
+testDispersion(sim_res_app)
+
+# Poisson version of the Apparent Competition model with target variables
+poisson_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_spri, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app_tgt <- deviance(poisson_comm_app_tgt) / df.residual(poisson_comm_app_tgt)
+dispersion_ratio_app_tgt
+
+sim_res_app_tgt <- simulateResiduals(fittedModel = poisson_comm_app_tgt)
+testDispersion(sim_res_app_tgt)
+
+```
+
+#### Poisson Model Selection
+```{r}
+model.sel(poisson_random_eff, poisson_comm_bu, poisson_comm_td, poisson_comm_app, poisson_comm_bu_tgt, poisson_comm_td_tgt, poisson_comm_app_tgt)
+```
+
+#############################################################################################
+
+## Model Selection
+```{r}
+model.sel(glmm_wk_spri_null, glmm_wk_spri_tgt_h, glmm_wk_spri_tgt_l, glmm_wk_spr_comm_bu, glmm_wk_spr_comm_td, glmm_wk_spr_comm_app, glmm_wk_spr_comm_bu_tgt, glmm_wk_spr_comm_td_tgt, glmm_wk_spr_comm_app_tgt, glmm_wk_spr_comm_app_2, glmm_wk_spr_comm_app_2_tgt, glmm_wk_spr_comm_app_3, glmm_wk_spr_comm_app_3_tgt, poisson_random_eff, poisson_comm_bu, poisson_comm_td, poisson_comm_app, poisson_comm_bu_tgt, poisson_comm_td_tgt, poisson_comm_app_tgt)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+#summary_output <- capture.output(model.sel(glmm_wk_spri_null, glmm_wk_spr_comm_bu, glmm_wk_spr_comm_td, glmm_wk_spr_comm_bu_tgt, glmm_wk_spr_comm_td_tgt, glmm_wk_spr_comm_app_2, glmm_wk_spr_comm_app_2_tgt, glmm_wk_spr_comm_app_3, glmm_wk_spr_comm_app_3_tgt))
+
+# Save the model selection to a CSV file
+#write.csv(summary_output, file = "Tables/region_spr_models_fnl.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+#summary_output <- capture.output(summary(glmm_wk_spr_comm_bu_tgt))
+
+# Save the summary data to a CSV file
+#write.csv(summary_output, file = "Tables/region_spr_comm_bu_tgt.csv", row.names = FALSE)
+```
+
+################################################################################################################################################################################################################################################################################################
+
+#6. Local, Multiseason, WEEK
+
+Let's look at the same sampling periods (i.e. seasons) at the local extent only to see if things change.
+
+Predicting that habitat associations will be more varied (less stark contrast between taiga and tundra) and that other processes might be more influential than bottom-up.
+
+```{r}
+mod_dat_wk_cbou <- read.csv("Processed_Data/glmm_wk_local_multi.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_cbou$target_cons <- fct_relevel(mod_dat_wk_cbou$target_cons, "None")
+mod_dat_wk_cbou$target_hydro <- fct_relevel(mod_dat_wk_cbou$target_hydro, "None")
+mod_dat_wk_cbou$target_linear <- fct_relevel(mod_dat_wk_cbou$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_cbou$target_cons)
+levels(mod_dat_wk_cbou$target_hydro)
+levels(mod_dat_wk_cbou$target_linear)
+```
+
+##Simple Models
+```{r}
+#GLMM with random and survey effort
+glmm_wk_cbou_null <- glmmTMB(Caribou ~ 1 +  offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_null)
+
+#with week
+glmm_wk_cbou_wk <- glmmTMB(Caribou ~ week + offset(log(n_days_effort)) + (1 | location_site) , data = mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+```
+
+## Target
+```{r}
+glmm_wk_cbou_tgt <- glmmTMB(Caribou ~ 
+                     target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_cbou_tgt)
+
+glmm_wk_cbou_tgt_h <- glmmTMB(Caribou ~ 
+                     target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_cbou_tgt_h)
+
+glmm_wk_cbou_tgt_l <- glmmTMB(Caribou ~ 
+                     target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_cbou_tgt_l)
+```
+
+## Committee Models
+
+### Bottom Up
+
+####NOTE: At the local scale, SPTNF, TSPBDF, and TSPS account for less than 1% of total area captured within buffer areas and were thus omitted.
+
+SPPSLM accounts for 44% of the total buffer area at the local scale and will be used as the reference level and thus ommitted from the model. 
+
+wo target
+```{r}
+glmm_wk_cbou_comm_bu <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_comm_bu)
+```
+
+wtarget
+```{r}
+glmm_wk_cbou_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_SPPSLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_comm_bu_tgt)
+```
+
+### Top Down
+wo target
+```{r}
+glmm_wk_cbou_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_comm_td)
+```
+
+wtarget
+```{r}
+glmm_wk_cbou_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_comm_td_tgt)
+```
+
+###Apparent Competition
+wo target
+```{r}
+glmm_wk_cbou_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_comm_app)
+```
+
+wtarget
+```{r}
+glmm_wk_cbou_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_comm_app_tgt)
+```
+
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_cbou_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_cbou_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_cbou, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_comm_app_3_tgt)
+```
+
+###Committee Model Selection
+```{r}
+model.sel(glmm_wk_cbou_null, glmm_wk_cbou_wk, glmm_wk_cbou_tgt_l, glmm_wk_cbou_tgt_h, glmm_wk_cbou_comm_bu, glmm_wk_cbou_comm_td, glmm_wk_cbou_comm_app, glmm_wk_cbou_comm_bu_tgt, glmm_wk_cbou_comm_td_tgt, glmm_wk_cbou_comm_app_tgt, glmm_wk_cbou_comm_app_2, glmm_wk_cbou_comm_app_2_tgt, glmm_wk_cbou_comm_app_3, glmm_wk_cbou_comm_app_3_tgt)
+```
+
+##############################################################################
+
+###Over-dispersion Testing
+
+Null Model
+```{r}
+# Poisson version of the random effects model
+poisson_random_eff <- glmmTMB(Caribou ~ 1 + offset(log(n_days_effort)) + (1 | location_site), 
+                              data = mod_dat_wk_cbou, 
+                              family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio <- deviance(poisson_random_eff) / df.residual(poisson_random_eff)
+dispersion_ratio  # >1.5 suggests overdispersion
+
+# DHARMa check
+library(DHARMa)
+sim_res <- simulateResiduals(fittedModel = poisson_random_eff)
+testDispersion(sim_res)
+```
+
+Bottom Up
+```{r}
+# Poisson version of the Bottom-Up model
+poisson_comm_bu <- glmmTMB(Caribou ~ z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                           z.X300_MF + z.X300_TSPG + z.X300_BAR + 
+                           offset(log(n_days_effort)) + (1 | location_site), 
+                           data = mod_dat_wk_cbou, 
+                           family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio_comm_bu <- deviance(poisson_comm_bu) / df.residual(poisson_comm_bu)
+dispersion_ratio_comm_bu
+
+# DHARMa check
+sim_res_comm_bu <- simulateResiduals(fittedModel = poisson_comm_bu)
+testDispersion(sim_res_comm_bu)
+
+# Poisson version of the Bottom-Up model with target variables
+poisson_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                  z.X300_MF + z.X300_TSPG + z.X300_BAR + 
+                  z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_bu_tgt <- deviance(poisson_comm_bu_tgt) / df.residual(poisson_comm_bu_tgt)
+dispersion_ratio_bu_tgt
+
+sim_res_bu_tgt <- simulateResiduals(fittedModel = poisson_comm_bu_tgt)
+testDispersion(sim_res_bu_tgt)
+```
+
+Top Down
+```{r}
+# Poisson version of the Top-Down model without target variables
+poisson_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) +  
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td <- deviance(poisson_comm_td) / df.residual(poisson_comm_td)
+dispersion_ratio_td
+
+sim_res_td <- simulateResiduals(fittedModel = poisson_comm_td)
+testDispersion(sim_res_td)
+
+# Poisson version of the Top-Down model with target variables
+poisson_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) +  
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td_tgt <- deviance(poisson_comm_td_tgt) / df.residual(poisson_comm_td_tgt)
+dispersion_ratio_td_tgt
+
+sim_res_td_tgt <- simulateResiduals(fittedModel = poisson_comm_td_tgt)
+testDispersion(sim_res_td_tgt)
+
+```
+
+Apparent Competition
+```{r}
+# Poisson version of the Apparent Competition model without target variables
+poisson_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app <- deviance(poisson_comm_app) / df.residual(poisson_comm_app)
+dispersion_ratio_app
+
+sim_res_app <- simulateResiduals(fittedModel = poisson_comm_app)
+testDispersion(sim_res_app)
+
+# Poisson version of the Apparent Competition model with target variables
+poisson_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app_tgt <- deviance(poisson_comm_app_tgt) / df.residual(poisson_comm_app_tgt)
+dispersion_ratio_app_tgt
+
+sim_res_app_tgt <- simulateResiduals(fittedModel = poisson_comm_app_tgt)
+testDispersion(sim_res_app_tgt)
+
+```
+
+#### Poisson Model Selection
+```{r}
+model.sel(poisson_random_eff, poisson_comm_bu, poisson_comm_td, poisson_comm_app, poisson_comm_bu_tgt, poisson_comm_td_tgt, poisson_comm_app_tgt)
+```
+
+#############################################################################################
+
+## Model Selection
+```{r}
+model.sel(glmm_wk_cbou_null, glmm_wk_cbou_wk, glmm_wk_cbou_tgt_l, glmm_wk_cbou_tgt_h, glmm_wk_cbou_comm_bu, glmm_wk_cbou_comm_td, glmm_wk_cbou_comm_app, glmm_wk_cbou_comm_bu_tgt, glmm_wk_cbou_comm_td_tgt, glmm_wk_cbou_comm_app_tgt, glmm_wk_cbou_comm_app_2, glmm_wk_cbou_comm_app_2_tgt, glmm_wk_cbou_comm_app_3, glmm_wk_cbou_comm_app_3_tgt, poisson_random_eff, poisson_comm_bu, poisson_comm_td, poisson_comm_app, poisson_comm_bu_tgt, poisson_comm_td_tgt, poisson_comm_app_tgt)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+#summary_output <- capture.output(model.sel(glmm_wk_cbou_null, glmm_wk_cbou_wk, glmm_wk_cbou_comm_bu, glmm_wk_cbou_comm_td, glmm_wk_cbou_comm_bu_tgt, glmm_wk_cbou_comm_td_tgt, glmm_wk_cbou_comm_app_2, glmm_wk_cbou_comm_app_2_tgt, glmm_wk_cbou_comm_app_3, glmm_wk_cbou_comm_app_3_tgt))
+
+# Save the model selection to a CSV file
+#write.csv(summary_output, file = "Tables/local_multi_models_fnl.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+#summary_output <- capture.output(summary(glmm_wk_cbou_wk))
+
+# Save the summary data to a CSV file
+#write.csv(summary_output, file = "Tables/local_multi_wk.csv", row.names = FALSE)
+```
+
+################################################################################################################################################################################################
+
+#7. Local, Summer, WEEKLY detection data
+```{r}
+# Create a new data frame for summer
+mod_dat_wk_cbou_summer <- read.csv("Processed_Data/glmm_wk_local_smr.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_cbou_summer$target_cons <- fct_relevel(mod_dat_wk_cbou_summer$target_cons, "None")
+mod_dat_wk_cbou_summer$target_hydro <- fct_relevel(mod_dat_wk_cbou_summer$target_hydro, "None")
+mod_dat_wk_cbou_summer$target_linear <- fct_relevel(mod_dat_wk_cbou_summer$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_cbou_summer$target_cons)
+levels(mod_dat_wk_cbou_summer$target_hydro)
+levels(mod_dat_wk_cbou_summer$target_linear)
+```
+
+##Simple Models
+```{r}
+#null model
+glmm_wk_cbou_smr_null <- glmmTMB(Caribou ~ 
+                     offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_null)
+
+#week model
+glmm_wk_cbou_smr_wk <- glmmTMB(Caribou ~ 
+                     week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_wk)
+```
+
+## Target
+```{r}
+glmm_wk_cbou_smr_tgt <- glmmTMB(Caribou ~ 
+                     target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_cbou_smr_tgt)
+
+glmm_wk_cbou_smr_tgt_h <- glmmTMB(Caribou ~ 
+                     target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_cbou_smr_tgt_h)
+
+glmm_wk_cbou_smr_tgt_l <- glmmTMB(Caribou ~ 
+                     target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_cbou_smr_tgt_l)
+```
+
+## Committee Models
+
+#### Bottom Up
+wo target
+```{r}
+glmm_wk_cbou_smr_comm_bu <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_comm_bu)
+```
+
+w target
+```{r}
+glmm_wk_cbou_smr_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_comm_bu_tgt)
+```
+
+#### Top Down
+wo target
+```{r}
+glmm_wk_cbou_smr_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_comm_td)
+```
+
+w target
+```{r}
+glmm_wk_cbou_smr_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_comm_td_tgt)
+```
+
+####Apparent Competition
+wo target
+```{r}
+glmm_wk_cbou_smr_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_comm_app)
+```
+
+w target
+```{r}
+glmm_wk_cbou_smr_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_comm_app_tgt)
+```
+
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_cbou_smr_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_smr_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_cbou_smr_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_smr_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_cbou_summer, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_smr_comm_app_3_tgt)
+```
+
+
+####Committee Model Selection
+```{r}
+model.sel(glmm_wk_cbou_smr_null, glmm_wk_cbou_smr_wk, glmm_wk_cbou_smr_tgt_h, glmm_wk_cbou_smr_tgt_l, glmm_wk_cbou_smr_comm_bu, glmm_wk_cbou_smr_comm_td, glmm_wk_cbou_smr_comm_app, glmm_wk_cbou_smr_comm_bu_tgt, glmm_wk_cbou_smr_comm_td_tgt, glmm_wk_cbou_smr_comm_app_tgt, glmm_wk_cbou_smr_comm_app_2, glmm_wk_cbou_smr_comm_app_2_tgt, glmm_wk_cbou_smr_comm_app_3, glmm_wk_cbou_smr_comm_app_3_tgt)
+```
+
+##############################################################################
+
+###Over-dispersion Testing
+
+Null Model
+```{r}
+# Poisson version of the random effects model
+poisson_random_eff <- glmmTMB(Caribou ~ 1 + offset(log(n_days_effort)) + (1 | location_site), 
+                              data = mod_dat_wk_cbou_summer, 
+                              family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio <- deviance(poisson_random_eff) / df.residual(poisson_random_eff)
+dispersion_ratio  # >1.5 suggests overdispersion
+
+# DHARMa check
+library(DHARMa)
+sim_res <- simulateResiduals(fittedModel = poisson_random_eff)
+testDispersion(sim_res)
+```
+
+Bottom Up
+```{r}
+# Poisson version of the Bottom-Up model
+poisson_comm_bu <- glmmTMB(Caribou ~ z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                           z.X300_MF + z.X300_TSPG + z.X300_BAR + 
+                           offset(log(n_days_effort)) + (1 | location_site), 
+                           data = mod_dat_wk_cbou_summer, 
+                           family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio_comm_bu <- deviance(poisson_comm_bu) / df.residual(poisson_comm_bu)
+dispersion_ratio_comm_bu
+
+# DHARMa check
+sim_res_comm_bu <- simulateResiduals(fittedModel = poisson_comm_bu)
+testDispersion(sim_res_comm_bu)
+
+# Poisson version of the Bottom-Up model with target variables
+poisson_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                  z.X300_MF + z.X300_TSPG + z.X300_BAR + 
+                  z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_summer, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_bu_tgt <- deviance(poisson_comm_bu_tgt) / df.residual(poisson_comm_bu_tgt)
+dispersion_ratio_bu_tgt
+
+sim_res_bu_tgt <- simulateResiduals(fittedModel = poisson_comm_bu_tgt)
+testDispersion(sim_res_bu_tgt)
+```
+
+Top Down
+```{r}
+# Poisson version of the Top-Down model without target variables
+poisson_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) +  
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_summer, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td <- deviance(poisson_comm_td) / df.residual(poisson_comm_td)
+dispersion_ratio_td
+
+sim_res_td <- simulateResiduals(fittedModel = poisson_comm_td)
+testDispersion(sim_res_td)
+
+# Poisson version of the Top-Down model with target variables
+poisson_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) +  
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_summer, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td_tgt <- deviance(poisson_comm_td_tgt) / df.residual(poisson_comm_td_tgt)
+dispersion_ratio_td_tgt
+
+sim_res_td_tgt <- simulateResiduals(fittedModel = poisson_comm_td_tgt)
+testDispersion(sim_res_td_tgt)
+
+```
+
+Apparent Competition
+```{r}
+# Poisson version of the Apparent Competition model without target variables
+poisson_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_summer, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app <- deviance(poisson_comm_app) / df.residual(poisson_comm_app)
+dispersion_ratio_app
+
+sim_res_app <- simulateResiduals(fittedModel = poisson_comm_app)
+testDispersion(sim_res_app)
+
+# Poisson version of the Apparent Competition model with target variables
+poisson_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_summer, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app_tgt <- deviance(poisson_comm_app_tgt) / df.residual(poisson_comm_app_tgt)
+dispersion_ratio_app_tgt
+
+sim_res_app_tgt <- simulateResiduals(fittedModel = poisson_comm_app_tgt)
+testDispersion(sim_res_app_tgt)
+
+```
+
+#### Poisson Model Selection
+```{r}
+model.sel(poisson_random_eff, poisson_comm_bu, poisson_comm_td, poisson_comm_app, poisson_comm_bu_tgt, poisson_comm_td_tgt, poisson_comm_app_tgt)
+```
+
+
+#############################################################################################
+
+## Model Selection
+```{r}
+model.sel(glmm_wk_cbou_smr_null, glmm_wk_cbou_smr_wk, glmm_wk_cbou_smr_tgt_h, glmm_wk_cbou_smr_tgt_l, glmm_wk_cbou_smr_comm_bu, glmm_wk_cbou_smr_comm_td, glmm_wk_cbou_smr_comm_app, glmm_wk_cbou_smr_comm_bu_tgt, glmm_wk_cbou_smr_comm_td_tgt, glmm_wk_cbou_smr_comm_app_tgt, glmm_wk_cbou_smr_comm_app_2, glmm_wk_cbou_smr_comm_app_2_tgt, glmm_wk_cbou_smr_comm_app_3, glmm_wk_cbou_smr_comm_app_3_tgt,poisson_random_eff, poisson_comm_bu, poisson_comm_td, poisson_comm_app, poisson_comm_bu_tgt, poisson_comm_td_tgt, poisson_comm_app_tgt)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+#summary_output <- capture.output(model.sel(glmm_wk_cbou_smr_null, glmm_wk_cbou_smr_comm_bu, glmm_wk_cbou_smr_comm_td, glmm_wk_cbou_smr_comm_bu_tgt, glmm_wk_cbou_smr_comm_td_tgt, glmm_wk_cbou_smr_comm_app_2, glmm_wk_cbou_smr_comm_app_2_tgt, glmm_wk_cbou_smr_comm_app_3, glmm_wk_cbou_smr_comm_app_3_tgt))
+
+# Save the model selection to a CSV file
+#write.csv(summary_output, file = "Tables/local_smr_models_fnl.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+#summary_output <- capture.output(summary(glmm_wk_cbou_smr_comm_bu_tgt))
+
+# Save the summary data to a CSV file
+#write.csv(summary_output, file = "Tables/local_smr_comm_bu_tgt.csv", row.names = FALSE)
+```
+
+################################################################################################################################################################################################
+
+# 8. Local, Fall, WEEKLY detection data
+```{r}
+# Create a new data frame for winter
+mod_dat_wk_cbou_fall <- read.csv("Processed_Data/glmm_wk_local_fall.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_cbou_fall$target_cons <- fct_relevel(mod_dat_wk_cbou_fall$target_cons, "None")
+mod_dat_wk_cbou_fall$target_hydro <- fct_relevel(mod_dat_wk_cbou_fall$target_hydro, "None")
+mod_dat_wk_cbou_fall$target_linear <- fct_relevel(mod_dat_wk_cbou_fall$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_cbou_fall$target_cons)
+levels(mod_dat_wk_cbou_fall$target_hydro)
+levels(mod_dat_wk_cbou_fall$target_linear)
+```
+
+##Simple Models
+```{r}
+#null model
+glmm_wk_cbou_fall_null <- glmmTMB(Caribou ~ 
+                     offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fall_null)
+
+#week model
+glmm_wk_cbou_fall_wk <- glmmTMB(Caribou ~ 
+                     week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fall_wk)
+```
+
+## Target
+```{r}
+glmm_wk_cbou_fall_tgt <- glmmTMB(Caribou ~ 
+                     target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fall_tgt)
+
+glmm_wk_cbou_fall_tgt_h <- glmmTMB(Caribou ~ 
+                     target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fall_tgt_h)
+
+glmm_wk_cbou_fall_tgt_l <- glmmTMB(Caribou ~ 
+                     target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fall_tgt_l)
+```
+
+## Committee Models
+
+#### Bottom Up
+wo target
+```{r}
+glmm_wk_cbou_fll_comm_bu <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fll_comm_bu)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_fll_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fll_comm_bu_tgt)
+```
+
+#### Top Down
+wo tgt
+```{r}
+glmm_wk_cbou_fll_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fll_comm_td)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_fll_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fll_comm_td_tgt)
+```
+
+####Apparent Competition
+wo target
+```{r}
+glmm_wk_cbou_fll_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fll_comm_app)
+```
+
+w target
+```{r}
+glmm_wk_cbou_fll_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fll_comm_app_tgt)
+```
+
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_cbou_fll_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fll_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_fll_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fll_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_cbou_fll_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fll_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_fll_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_cbou_fall, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_fll_comm_app_3_tgt)
+```
+
+
+####Committee Model Selection
+```{r}
+model.sel(glmm_wk_cbou_fall_null, glmm_wk_cbou_fall_wk, glmm_wk_cbou_fall_tgt_h, glmm_wk_cbou_fall_tgt_l, glmm_wk_cbou_fll_comm_bu, glmm_wk_cbou_fll_comm_td, glmm_wk_cbou_fll_comm_app, glmm_wk_cbou_fll_comm_bu_tgt, glmm_wk_cbou_fll_comm_td_tgt, glmm_wk_cbou_fll_comm_app_tgt, glmm_wk_cbou_fll_comm_app_2, glmm_wk_cbou_fll_comm_app_2_tgt, glmm_wk_cbou_fll_comm_app_3, glmm_wk_cbou_fll_comm_app_3_tgt)
+```
+
+#############################################################################################
+
+###Over-dispersion Testing
+
+Null Model
+```{r}
+# Poisson version of the random effects model
+poisson_random_eff <- glmmTMB(Caribou ~ 1 + offset(log(n_days_effort)) + (1 | location_site), 
+                              data = mod_dat_wk_cbou_fall, 
+                              family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio <- deviance(poisson_random_eff) / df.residual(poisson_random_eff)
+dispersion_ratio  # >1.5 suggests overdispersion
+
+# DHARMa check
+library(DHARMa)
+sim_res <- simulateResiduals(fittedModel = poisson_random_eff)
+testDispersion(sim_res)
+```
+
+Bottom Up
+```{r}
+# Poisson version of the Bottom-Up model
+poisson_comm_bu <- glmmTMB(Caribou ~ z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                           z.X300_MF + z.X300_TSPG + z.X300_BAR + 
+                           offset(log(n_days_effort)) + (1 | location_site), 
+                           data = mod_dat_wk_cbou_fall, 
+                           family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio_comm_bu <- deviance(poisson_comm_bu) / df.residual(poisson_comm_bu)
+dispersion_ratio_comm_bu
+
+# DHARMa check
+sim_res_comm_bu <- simulateResiduals(fittedModel = poisson_comm_bu)
+testDispersion(sim_res_comm_bu)
+
+# Poisson version of the Bottom-Up model with target variables
+poisson_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                  z.X300_MF + z.X300_TSPG + z.X300_BAR + 
+                  z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_fall, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_bu_tgt <- deviance(poisson_comm_bu_tgt) / df.residual(poisson_comm_bu_tgt)
+dispersion_ratio_bu_tgt
+
+sim_res_bu_tgt <- simulateResiduals(fittedModel = poisson_comm_bu_tgt)
+testDispersion(sim_res_bu_tgt)
+```
+
+Top Down
+```{r}
+# Poisson version of the Top-Down model without target variables
+poisson_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) +  
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_fall, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td <- deviance(poisson_comm_td) / df.residual(poisson_comm_td)
+dispersion_ratio_td
+
+sim_res_td <- simulateResiduals(fittedModel = poisson_comm_td)
+testDispersion(sim_res_td)
+
+# Poisson version of the Top-Down model with target variables
+poisson_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) +  
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_fall, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td_tgt <- deviance(poisson_comm_td_tgt) / df.residual(poisson_comm_td_tgt)
+dispersion_ratio_td_tgt
+
+sim_res_td_tgt <- simulateResiduals(fittedModel = poisson_comm_td_tgt)
+testDispersion(sim_res_td_tgt)
+
+```
+
+Apparent Competition
+```{r}
+# Poisson version of the Apparent Competition model without target variables
+poisson_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_fall, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app <- deviance(poisson_comm_app) / df.residual(poisson_comm_app)
+dispersion_ratio_app
+
+sim_res_app <- simulateResiduals(fittedModel = poisson_comm_app)
+testDispersion(sim_res_app)
+
+# Poisson version of the Apparent Competition model with target variables
+poisson_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_fall, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app_tgt <- deviance(poisson_comm_app_tgt) / df.residual(poisson_comm_app_tgt)
+dispersion_ratio_app_tgt
+
+sim_res_app_tgt <- simulateResiduals(fittedModel = poisson_comm_app_tgt)
+testDispersion(sim_res_app_tgt)
+
+```
+
+#### Poisson Model Selection
+```{r}
+model.sel(poisson_random_eff, poisson_comm_bu, poisson_comm_td, poisson_comm_app, poisson_comm_bu_tgt, poisson_comm_td_tgt, poisson_comm_app_tgt)
+```
+
+################################################################################
+
+## Model Selection
+```{r}
+model.sel(glmm_wk_cbou_fall_null, glmm_wk_cbou_fall_wk, glmm_wk_cbou_fall_tgt_h, glmm_wk_cbou_fall_tgt_l, glmm_wk_cbou_fll_comm_bu, glmm_wk_cbou_fll_comm_td, glmm_wk_cbou_fll_comm_app, glmm_wk_cbou_fll_comm_bu_tgt, glmm_wk_cbou_fll_comm_td_tgt, glmm_wk_cbou_fll_comm_app_tgt, glmm_wk_cbou_fll_comm_app_2, glmm_wk_cbou_fll_comm_app_2_tgt, glmm_wk_cbou_fll_comm_app_3, glmm_wk_cbou_fll_comm_app_3_tgt,poisson_random_eff, poisson_comm_bu, poisson_comm_td, poisson_comm_app, poisson_comm_bu_tgt, poisson_comm_td_tgt, poisson_comm_app_tgt)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+#summary_output <- capture.output(model.sel(glmm_wk_cbou_fall_null, glmm_wk_cbou_fll_comm_bu, glmm_wk_cbou_fll_comm_td, glmm_wk_cbou_fll_comm_bu_tgt, glmm_wk_cbou_fll_comm_td_tgt, glmm_wk_cbou_fll_comm_app_2, glmm_wk_cbou_fll_comm_app_2_tgt, glmm_wk_cbou_fll_comm_app_3, glmm_wk_cbou_fll_comm_app_3_tgt))
+
+# Save the model selection to a CSV file
+#write.csv(summary_output, file = "Tables/local_fll_models_fnl.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+#summary_output <- capture.output(summary(glmm_wk_cbou_fll_comm_bu))
+
+# Save the summary data to a CSV file
+#write.csv(summary_output, file = "Tables/local_fll_comm_bu.csv", row.names = FALSE)
+```
+
+################################################################################################################################################################################################
+
+# 9. Local, Winter, WEEKLY detection data
+```{r}
+# Create a new data frame for winter
+mod_dat_wk_cbou_winter <- read.csv("Processed_Data/glmm_wk_local_wtr.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_cbou_winter$target_cons <- fct_relevel(mod_dat_wk_cbou_winter$target_cons, "None")
+mod_dat_wk_cbou_winter$target_hydro <- fct_relevel(mod_dat_wk_cbou_winter$target_hydro, "None")
+mod_dat_wk_cbou_winter$target_linear <- fct_relevel(mod_dat_wk_cbou_winter$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_cbou_winter$target_cons)
+levels(mod_dat_wk_cbou_winter$target_hydro)
+levels(mod_dat_wk_cbou_winter$target_linear)
+```
+
+##Simple Models
+```{r}
+#null model
+glmm_wk_cbou_wtr_null <- glmmTMB(Caribou ~ 
+                     offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_wtr_null)
+
+#week model
+glmm_wk_cbou_wtr_wk <- glmmTMB(Caribou ~ 
+                     week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_wtr_wk)
+```
+
+## Target
+```{r}
+glmm_wk_cbou_wtr_tgt <- glmmTMB(Caribou ~ 
+                     target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_cbou_wtr_tgt)
+
+glmm_wk_cbou_wtr_tgt_h <- glmmTMB(Caribou ~ 
+                     target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_cbou_wtr_tgt_h)
+
+glmm_wk_cbou_wtr_tgt_l <- glmmTMB(Caribou ~ 
+                     target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_cbou_wtr_tgt_l)
+```
+
+## Committee Models
+
+#### Bottom Up
+wo tgt
+```{r}
+glmm_wk_cbou_wtr_comm_bu <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_wtr_comm_bu)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_wtr_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_wtr_comm_bu_tgt)
+```
+
+#### Top Down
+wo tgt
+```{r}
+glmm_wk_cbou_wtr_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_wtr_comm_td)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_wtr_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf)+ target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_wtr_comm_td_tgt)
+```
+
+####Apparent Competition
+wo tgt
+```{r}
+glmm_wk_cbou_wtr_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_wtr_comm_app)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_wtr_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_wtr_comm_app_tgt)
+```
+
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_cbou_wtr_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_wtr_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_wtr_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_wtr_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_cbou_wtr_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_wtr_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_wtr_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_cbou_winter, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_wtr_comm_app_3_tgt)
+```
+
+####Committee Model Selection
+```{r}
+model.sel(glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_tgt_h, glmm_wk_cbou_wtr_tgt_l, glmm_wk_cbou_wtr_comm_bu, glmm_wk_cbou_wtr_comm_td, glmm_wk_cbou_wtr_comm_app, glmm_wk_cbou_wtr_comm_bu_tgt, glmm_wk_cbou_wtr_comm_td_tgt, glmm_wk_cbou_wtr_comm_app_tgt, glmm_wk_cbou_wtr_comm_app_2, glmm_wk_cbou_wtr_comm_app_2_tgt, glmm_wk_cbou_wtr_comm_app_3, glmm_wk_cbou_wtr_comm_app_3_tgt)
+```
+
+###################################################################################
+
+###Over-dispersion Testing
+
+Null Model
+```{r}
+# Poisson version of the random effects model
+poisson_random_eff <- glmmTMB(Caribou ~ 1 + offset(log(n_days_effort)) + (1 | location_site), 
+                              data = mod_dat_wk_cbou_winter, 
+                              family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio <- deviance(poisson_random_eff) / df.residual(poisson_random_eff)
+dispersion_ratio  # >1.5 suggests overdispersion
+
+# DHARMa check
+library(DHARMa)
+sim_res <- simulateResiduals(fittedModel = poisson_random_eff)
+testDispersion(sim_res)
+```
+
+Bottom Up
+```{r}
+# Poisson version of the Bottom-Up model
+poisson_comm_bu <- glmmTMB(Caribou ~ z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                           z.X300_MF + z.X300_TSPG + z.X300_BAR + 
+                           offset(log(n_days_effort)) + (1 | location_site), 
+                           data = mod_dat_wk_cbou_winter, 
+                           family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio_comm_bu <- deviance(poisson_comm_bu) / df.residual(poisson_comm_bu)
+dispersion_ratio_comm_bu
+
+# DHARMa check
+sim_res_comm_bu <- simulateResiduals(fittedModel = poisson_comm_bu)
+testDispersion(sim_res_comm_bu)
+
+# Poisson version of the Bottom-Up model with target variables
+poisson_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                  z.X300_MF + z.X300_TSPG + z.X300_BAR + 
+                  z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_winter, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_bu_tgt <- deviance(poisson_comm_bu_tgt) / df.residual(poisson_comm_bu_tgt)
+dispersion_ratio_bu_tgt
+
+sim_res_bu_tgt <- simulateResiduals(fittedModel = poisson_comm_bu_tgt)
+testDispersion(sim_res_bu_tgt)
+```
+
+Top Down
+```{r}
+# Poisson version of the Top-Down model without target variables
+poisson_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) +  
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_winter, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td <- deviance(poisson_comm_td) / df.residual(poisson_comm_td)
+dispersion_ratio_td
+
+sim_res_td <- simulateResiduals(fittedModel = poisson_comm_td)
+testDispersion(sim_res_td)
+
+# Poisson version of the Top-Down model with target variables
+poisson_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) +  
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_winter, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td_tgt <- deviance(poisson_comm_td_tgt) / df.residual(poisson_comm_td_tgt)
+dispersion_ratio_td_tgt
+
+sim_res_td_tgt <- simulateResiduals(fittedModel = poisson_comm_td_tgt)
+testDispersion(sim_res_td_tgt)
+
+```
+
+Apparent Competition
+```{r}
+# Poisson version of the Apparent Competition model without target variables
+poisson_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_winter, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app <- deviance(poisson_comm_app) / df.residual(poisson_comm_app)
+dispersion_ratio_app
+
+sim_res_app <- simulateResiduals(fittedModel = poisson_comm_app)
+testDispersion(sim_res_app)
+
+# Poisson version of the Apparent Competition model with target variables
+poisson_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_winter, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app_tgt <- deviance(poisson_comm_app_tgt) / df.residual(poisson_comm_app_tgt)
+dispersion_ratio_app_tgt
+
+sim_res_app_tgt <- simulateResiduals(fittedModel = poisson_comm_app_tgt)
+testDispersion(sim_res_app_tgt)
+
+```
+
+#### Poisson Model Selection
+```{r}
+model.sel(poisson_random_eff, poisson_comm_bu, poisson_comm_td, poisson_comm_app, poisson_comm_bu_tgt, poisson_comm_td_tgt, poisson_comm_app_tgt)
+```
+
+################################################################################
+
+
+## Model Selection
+```{r}
+model.sel(poisson_random_eff, poisson_comm_bu, poisson_comm_td, poisson_comm_app, poisson_comm_bu_tgt, poisson_comm_td_tgt, poisson_comm_app_tgt, glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_tgt_h, glmm_wk_cbou_wtr_tgt_l, glmm_wk_cbou_wtr_comm_bu, glmm_wk_cbou_wtr_comm_td, glmm_wk_cbou_wtr_comm_app, glmm_wk_cbou_wtr_comm_bu_tgt, glmm_wk_cbou_wtr_comm_td_tgt, glmm_wk_cbou_wtr_comm_app_tgt, glmm_wk_cbou_wtr_comm_app_2, glmm_wk_cbou_wtr_comm_app_2_tgt, glmm_wk_cbou_wtr_comm_app_3, glmm_wk_cbou_wtr_comm_app_3_tgt)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+#summary_output <- capture.output(model.sel(glmm_wk_cbou_wtr_null, glmm_wk_cbou_wtr_comm_bu, glmm_wk_cbou_wtr_comm_td, glmm_wk_cbou_wtr_comm_bu_tgt, glmm_wk_cbou_wtr_comm_td_tgt, glmm_wk_cbou_wtr_comm_app_2, glmm_wk_cbou_wtr_comm_app_2_tgt, glmm_wk_cbou_wtr_comm_app_3, glmm_wk_cbou_wtr_comm_app_3_tgt))
+
+# Save the model selection to a CSV file
+#write.csv(summary_output, file = "Tables/local_wtr_models_fnl.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+#summary_output <- capture.output(summary(glmm_wk_cbou_wtr_comm_app_3))
+
+# Save the summary data to a CSV file
+#write.csv(summary_output, file = "Tables/local_wtr_comm_app_3.csv", row.names = FALSE)
+```
+
+
+############################################################################################################################################################################################################################
+
+# 10. Local, Spring, WEEKLY detection data
+```{r}
+# Create a new data frame for winter
+mod_dat_wk_cbou_spri <- read.csv("Processed_Data/glmm_wk_local_spr.csv", header=T)
+
+#reorder factor levels for categorical variables
+mod_dat_wk_cbou_spri$target_cons <- fct_relevel(mod_dat_wk_cbou_spri$target_cons, "None")
+mod_dat_wk_cbou_spri$target_hydro <- fct_relevel(mod_dat_wk_cbou_spri$target_hydro, "None")
+mod_dat_wk_cbou_spri$target_linear <- fct_relevel(mod_dat_wk_cbou_spri$target_linear, "None")
+
+#check levels
+levels(mod_dat_wk_cbou_spri$target_cons)
+levels(mod_dat_wk_cbou_spri$target_hydro)
+levels(mod_dat_wk_cbou_spri$target_linear)
+```
+
+##Simple Models
+```{r}
+#null model
+glmm_wk_cbou_spri_null <- glmmTMB(Caribou ~ 
+                     offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_spri_null)
+
+#week model
+glmm_wk_cbou_spri_wk <- glmmTMB(Caribou ~ 
+                     week + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_spri_wk)
+```
+
+## Target
+```{r}
+glmm_wk_cbou_spri_tgt <- glmmTMB(Caribou ~ 
+                     target_cons + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_cbou_spri_tgt)
+
+glmm_wk_cbou_spri_tgt_h <- glmmTMB(Caribou ~ 
+                     target_hydro + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_cbou_spri_tgt_h)
+
+glmm_wk_cbou_spri_tgt_l <- glmmTMB(Caribou ~ 
+                     target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+
+summary(glmm_wk_cbou_spri_tgt_l)
+```
+
+## Committee Models
+
+#### Bottom Up
+wo tgt
+```{r}
+glmm_wk_cbou_spr_comm_bu <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_spr_comm_bu)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_spr_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + z.X300_MF + z.X300_TSPG + z.X300_BAR + z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_spr_comm_bu_tgt)
+```
+
+#### Top Down
+wo tgt
+```{r}
+glmm_wk_cbou_spr_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_spr_comm_td)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_spr_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_spr_comm_td_tgt)
+```
+
+####Apparent Competition
+wo tgt
+```{r}
+glmm_wk_cbou_spr_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Moose*Grizzly.Bear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_spr_comm_app)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_spr_comm_app_tgt <- glmmTMB(Caribou ~ 
+                 scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + Muskox*Gray.Wolf + Muskox*Grizzly.Bear + Moose*Gray.Wolf + Moose*Grizzly.Bear + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_spr_comm_app_tgt)
+```
+
+#####Simplified App Comp
+two sets of different simplified models to try to solve convergence issues suggested by committee.
+
+Species Only. Species detections scaled within model formula.
+######NOTE: This results in model outputs exactly the same as the unscaled ung+pred model...
+
+wout tgt
+```{r}
+glmm_wk_cbou_spr_comm_app_2 <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_spr_comm_app_2)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_spr_comm_app_2_tgt <- glmmTMB(Caribou ~ 
+                  scale(Muskox) + scale(Moose) + scale(Gray.Wolf) + scale(Grizzly.Bear) + target_hydro + target_linear + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_spr_comm_app_2_tgt)
+```
+
+Consolidated and scaled Ungulates (moose+muskox) and Predators (Wolves+Griz) and an interaction term for Ung*Pred
+
+wout tgt
+```{r}
+glmm_wk_cbou_spr_comm_app_3 <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_spr_comm_app_3)
+```
+
+w tgt
+```{r}
+glmm_wk_cbou_spr_comm_app_3_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + offset(log(n_days_effort)) + target_hydro + target_linear + (1|location_site) , data=mod_dat_wk_cbou_spri, family="nbinom2", control=glmmTMBControl(parallel=5))
+
+summary(glmm_wk_cbou_spr_comm_app_3_tgt)
+```
+
+####Committee Model Selection
+```{r}
+model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_bu_tgt, glmm_wk_cbou_spr_comm_td_tgt, glmm_wk_cbou_spr_comm_app_2, glmm_wk_cbou_spr_comm_app_2_tgt, glmm_wk_cbou_spr_comm_app_3, glmm_wk_cbou_spr_comm_app_3_tgt)
+```
+
+###################################################################################
+
+###Over-dispersion Testing
+
+Null Model
+```{r}
+# Poisson version of the random effects model
+poisson_random_eff <- glmmTMB(Caribou ~ 1 + offset(log(n_days_effort)) + (1 | location_site), 
+                              data = mod_dat_wk_cbou_spri, 
+                              family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio <- deviance(poisson_random_eff) / df.residual(poisson_random_eff)
+dispersion_ratio  # >1.5 suggests overdispersion
+
+# DHARMa check
+library(DHARMa)
+sim_res <- simulateResiduals(fittedModel = poisson_random_eff)
+testDispersion(sim_res)
+```
+
+Bottom Up
+```{r}
+# Poisson version of the Bottom-Up model
+poisson_comm_bu <- glmmTMB(Caribou ~ z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                           z.X300_MF + z.X300_TSPG + z.X300_BAR + 
+                           offset(log(n_days_effort)) + (1 | location_site), 
+                           data = mod_dat_wk_cbou_spri, 
+                           family = "poisson")
+
+# Dispersion ratio
+dispersion_ratio_comm_bu <- deviance(poisson_comm_bu) / df.residual(poisson_comm_bu)
+dispersion_ratio_comm_bu
+
+# DHARMa check
+sim_res_comm_bu <- simulateResiduals(fittedModel = poisson_comm_bu)
+testDispersion(sim_res_comm_bu)
+
+# Poisson version of the Bottom-Up model with target variables
+poisson_comm_bu_tgt <- glmmTMB(Caribou ~ 
+                  z.X300_SPPGLM + z.X300_TSPNF + z.X300_WET + z.X300_WAT + 
+                  z.X300_MF + z.X300_TSPG + z.X300_BAR + 
+                  z.mean_elev_300 + z.mean_tri_300 + z.esker_dist_m + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_spri, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_bu_tgt <- deviance(poisson_comm_bu_tgt) / df.residual(poisson_comm_bu_tgt)
+dispersion_ratio_bu_tgt
+
+sim_res_bu_tgt <- simulateResiduals(fittedModel = poisson_comm_bu_tgt)
+testDispersion(sim_res_bu_tgt)
+```
+
+Top Down
+```{r}
+# Poisson version of the Top-Down model without target variables
+poisson_comm_td <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) +  
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_spri, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td <- deviance(poisson_comm_td) / df.residual(poisson_comm_td)
+dispersion_ratio_td
+
+sim_res_td <- simulateResiduals(fittedModel = poisson_comm_td)
+testDispersion(sim_res_td)
+
+# Poisson version of the Top-Down model with target variables
+poisson_comm_td_tgt <- glmmTMB(Caribou ~ 
+                  scale(Gray.Wolf) +  
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_spri, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_td_tgt <- deviance(poisson_comm_td_tgt) / df.residual(poisson_comm_td_tgt)
+dispersion_ratio_td_tgt
+
+sim_res_td_tgt <- simulateResiduals(fittedModel = poisson_comm_td_tgt)
+testDispersion(sim_res_td_tgt)
+
+```
+
+Apparent Competition
+```{r}
+# Poisson version of the Apparent Competition model without target variables
+poisson_comm_app <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_spri, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app <- deviance(poisson_comm_app) / df.residual(poisson_comm_app)
+dispersion_ratio_app
+
+sim_res_app <- simulateResiduals(fittedModel = poisson_comm_app)
+testDispersion(sim_res_app)
+
+# Poisson version of the Apparent Competition model with target variables
+poisson_comm_app_tgt <- glmmTMB(Caribou ~ 
+                  scale(Ungulates) + scale(Predators) + Ungulates*Predators + 
+                  target_hydro + target_linear + 
+                  offset(log(n_days_effort)) + (1 | location_site), 
+                  data = mod_dat_wk_cbou_spri, 
+                  family = "poisson")
+
+# Check for overdispersion
+dispersion_ratio_app_tgt <- deviance(poisson_comm_app_tgt) / df.residual(poisson_comm_app_tgt)
+dispersion_ratio_app_tgt
+
+sim_res_app_tgt <- simulateResiduals(fittedModel = poisson_comm_app_tgt)
+testDispersion(sim_res_app_tgt)
+
+```
+
+#### Poisson Model Selection
+```{r}
+model.sel(poisson_random_eff, poisson_comm_bu, poisson_comm_td, poisson_comm_app, poisson_comm_bu_tgt, poisson_comm_td_tgt, poisson_comm_app_tgt)
+```
+
+################################################################################
+
+
+## Model Selection
+```{r}
+model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_bu_tgt, glmm_wk_cbou_spr_comm_td_tgt, glmm_wk_cbou_spr_comm_app_2, glmm_wk_cbou_spr_comm_app_2_tgt, glmm_wk_cbou_spr_comm_app_3, glmm_wk_cbou_spr_comm_app_3_tgt, poisson_random_eff, poisson_comm_bu, poisson_comm_td, poisson_comm_app, poisson_comm_bu_tgt, poisson_comm_td_tgt, poisson_comm_app_tgt)
+```
+
+###Save Model Selection
+```{r}
+# Capture the model selection
+#summary_output <- capture.output(model.sel(glmm_wk_cbou_spri_null, glmm_wk_cbou_spr_comm_bu, glmm_wk_cbou_spr_comm_td, glmm_wk_cbou_spr_comm_bu_tgt, glmm_wk_cbou_spr_comm_td_tgt, glmm_wk_cbou_spr_comm_app_2, glmm_wk_cbou_spr_comm_app_3, glmm_wk_cbou_spr_comm_app_3_tgt))
+
+# Save the model selection to a CSV file
+#write.csv(summary_output, file = "Tables/local_spr_models_fnl.csv", row.names = FALSE)
+```
+
+###Save Top Model
+```{r}
+# Capture the summary output
+#summary_output <- capture.output(summary(glmm_wk_cbou_spri_lcc_2))
+
+# Save the summary data to a CSV file
+#write.csv(summary_output, file = "Tables/local_spri_lcc_2.csv", row.names = FALSE)
+```
+
+#############################################################################################################################################################################################################################################
+
+Some simple summary statistics to include in early parts of the results section. 
+
+#11. Proportion of cameras detected
+
+```{r}
+#cluster analysis
+tdn_clust_summaries_full<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_full.csv")
+
+# Specify the dataframe and species columns, excluding the first four columns
+df <- tdn_clust_summaries_full
+species_columns <- colnames(df)[3:72]  # Exclude the first columns
+
+# Count the number of sampling sites where each species was detected
+species_detected_sites <- colSums(df[, species_columns] > 0)
+
+# Calculate the total number of sampling sites
+total_sites <- count(unique(mod_dat_wk$location))
+
+# Calculate the proportion of sampling sites each species was detected at
+species_proportions <- species_detected_sites / total_sites
+
+# Create a dataframe with species names and their respective proportions
+summary_df <- data.frame(Species = names(species_proportions), Proportion_Detected = species_proportions)
+
+# Print the new summary dataframe
+print(summary_df)
+```
+
+#12. Species co-occurrences
+
+##Regional, Multi-season
+```{r}
+# Select only the species detection columns by explicitly naming them
+co_occurrences <- mod_dat_wk %>%
+  dplyr::select(Caribou, Moose, Muskox, Gray.Wolf, Grizzly.Bear, Predators, Ungulates) %>%
+  mutate(across(everything(), ~ . >= 1))
+
+# Function to count co-occurrences for each species pair
+count_co_occurrences <- function(df, species1, species2) {
+  sum(df[[species1]] & df[[species2]])
+}
+
+# Get all unique species pairs
+species <- c("Caribou", "Moose", "Muskox", "Gray.Wolf", "Grizzly.Bear", "Predators", "Ungulates")
+pairs <- combn(species, 2, simplify = FALSE)
+
+# Calculate co-occurrences for each pair
+co_occurrence_counts <- sapply(pairs, function(pair) {
+  count_co_occurrences(co_occurrences, pair[1], pair[2])
+})
+
+# Format the results into a readable data frame
+results <- data.frame(
+  Species1 = sapply(pairs, `[`, 1),
+  Species2 = sapply(pairs, `[`, 2),
+  Co_Occurrences = co_occurrence_counts
+)
+
+# View the results
+print(results)
+```
+
+##Local, Multi-season
+```{r}
+# Select only the species detection columns by explicitly naming them
+co_occurrences <- mod_dat_wk_cbou %>%
+  dplyr::select(Caribou, Moose, Muskox, Gray.Wolf, Grizzly.Bear, Predators, Ungulates) %>%
+  mutate(across(everything(), ~ . >= 1))
+
+# Function to count co-occurrences for each species pair
+count_co_occurrences <- function(df, species1, species2) {
+  sum(df[[species1]] & df[[species2]])
+}
+
+# Get all unique species pairs
+species <- c("Caribou", "Moose", "Muskox", "Gray.Wolf", "Grizzly.Bear", "Predators", "Ungulates")
+pairs <- combn(species, 2, simplify = FALSE)
+
+# Calculate co-occurrences for each pair
+co_occurrence_counts <- sapply(pairs, function(pair) {
+  count_co_occurrences(co_occurrences, pair[1], pair[2])
+})
+
+# Format the results into a readable data frame
+results <- data.frame(
+  Species1 = sapply(pairs, `[`, 1),
+  Species2 = sapply(pairs, `[`, 2),
+  Co_Occurrences = co_occurrence_counts
+)
+
+# View the results
+print(results)
+```
+
+##Local, Summer
+```{r}
+# Select only the species detection columns by explicitly naming them
+co_occurrences <- mod_dat_wk_cbou_summer %>%
+  dplyr::select(Caribou, Moose, Muskox, Gray.Wolf, Grizzly.Bear, Predators, Ungulates) %>%
+  mutate(across(everything(), ~ . >= 1))
+
+# Function to count co-occurrences for each species pair
+count_co_occurrences <- function(df, species1, species2) {
+  sum(df[[species1]] & df[[species2]])
+}
+
+# Get all unique species pairs
+species <- c("Caribou", "Moose", "Muskox", "Gray.Wolf", "Grizzly.Bear", "Predators", "Ungulates")
+pairs <- combn(species, 2, simplify = FALSE)
+
+# Calculate co-occurrences for each pair
+co_occurrence_counts <- sapply(pairs, function(pair) {
+  count_co_occurrences(co_occurrences, pair[1], pair[2])
+})
+
+# Format the results into a readable data frame
+results <- data.frame(
+  Species1 = sapply(pairs, `[`, 1),
+  Species2 = sapply(pairs, `[`, 2),
+  Co_Occurrences = co_occurrence_counts
+)
+
+# View the results
+print(results)
+```
+
+##Local, Fall
+```{r}
+# Select only the species detection columns by explicitly naming them
+co_occurrences <- mod_dat_wk_cbou_fall %>%
+  dplyr::select(Caribou, Moose, Muskox, Gray.Wolf, Grizzly.Bear, Predators, Ungulates) %>%
+  mutate(across(everything(), ~ . >= 1))
+
+# Function to count co-occurrences for each species pair
+count_co_occurrences <- function(df, species1, species2) {
+  sum(df[[species1]] & df[[species2]])
+}
+
+# Get all unique species pairs
+species <- c("Caribou", "Moose", "Muskox", "Gray.Wolf", "Grizzly.Bear", "Predators", "Ungulates")
+pairs <- combn(species, 2, simplify = FALSE)
+
+# Calculate co-occurrences for each pair
+co_occurrence_counts <- sapply(pairs, function(pair) {
+  count_co_occurrences(co_occurrences, pair[1], pair[2])
+})
+
+# Format the results into a readable data frame
+results <- data.frame(
+  Species1 = sapply(pairs, `[`, 1),
+  Species2 = sapply(pairs, `[`, 2),
+  Co_Occurrences = co_occurrence_counts
+)
+
+# View the results
+print(results)
+```
+
+
+##Local, Winter
+
+no predator:ungulate or caribou:ungulate in the local, winter. Caribou:Wolf/ caribou:predator n=4. 
+```{r}
+# Select only the species detection columns by explicitly naming them
+co_occurrences <- mod_dat_wk_cbou_winter %>%
+  dplyr::select(Caribou, Moose, Muskox, Gray.Wolf, Grizzly.Bear, Predators, Ungulates) %>%
+  mutate(across(everything(), ~ . >= 1))
+
+# Function to count co-occurrences for each species pair
+count_co_occurrences <- function(df, species1, species2) {
+  sum(df[[species1]] & df[[species2]])
+}
+
+# Get all unique species pairs
+species <- c("Caribou", "Moose", "Muskox", "Gray.Wolf", "Grizzly.Bear", "Predators", "Ungulates")
+pairs <- combn(species, 2, simplify = FALSE)
+
+# Calculate co-occurrences for each pair
+co_occurrence_counts <- sapply(pairs, function(pair) {
+  count_co_occurrences(co_occurrences, pair[1], pair[2])
+})
+
+# Format the results into a readable data frame
+results <- data.frame(
+  Species1 = sapply(pairs, `[`, 1),
+  Species2 = sapply(pairs, `[`, 2),
+  Co_Occurrences = co_occurrence_counts
+)
+
+# View the results
+print(results)
+```
+
+##Local, Spring
+
+no caribou:ungulate or caribou:predator in the local spring. n=3 predator:ungulate, muskox:wolf =2, moose:grizzly = 1 
+```{r}
+# Select only the species detection columns by explicitly naming them
+co_occurrences <- mod_dat_wk_cbou_spri %>%
+  dplyr::select(Caribou, Moose, Muskox, Gray.Wolf, Grizzly.Bear, Predators, Ungulates) %>%
+  mutate(across(everything(), ~ . >= 1))
+
+# Function to count co-occurrences for each species pair
+count_co_occurrences <- function(df, species1, species2) {
+  sum(df[[species1]] & df[[species2]])
+}
+
+# Get all unique species pairs
+species <- c("Caribou", "Moose", "Muskox", "Gray.Wolf", "Grizzly.Bear", "Predators", "Ungulates")
+pairs <- combn(species, 2, simplify = FALSE)
+
+# Calculate co-occurrences for each pair
+co_occurrence_counts <- sapply(pairs, function(pair) {
+  count_co_occurrences(co_occurrences, pair[1], pair[2])
+})
+
+# Format the results into a readable data frame
+results <- data.frame(
+  Species1 = sapply(pairs, `[`, 1),
+  Species2 = sapply(pairs, `[`, 2),
+  Co_Occurrences = co_occurrence_counts
+)
+
+# View the results
+print(results)
+```
+
+#13. Targets by species
+
+looking at targets and species for the local/spring extent since that's where we got convergence issues in species/target models (but not bottom up target)
+
+```{r}
+# Count occurrences for target_linear
+species_linear_counts <- mod_dat_wk_cbou_spri %>%
+  # Filter rows where species have at least one detection
+  filter(Caribou >= 1 | Moose >= 1 | Muskox >= 1 | Gray.Wolf >= 1 | Grizzly.Bear >= 1) %>%
+  # Pivot the data longer to analyze each species individually
+  pivot_longer(cols = c(Caribou, Moose, Muskox, Gray.Wolf, Grizzly.Bear), 
+               names_to = "Species", 
+               values_to = "Detections") %>%
+  # Keep rows where species detections are greater than or equal to 1
+  filter(Detections >= 1) %>%
+  # Group by species and target_linear
+  group_by(Species, target_linear) %>%
+  # Count the number of occurrences for each combination
+  summarise(Count = n(), .groups = 'drop')
+
+# View the results for target_linear
+print(species_linear_counts)
+
+# Count occurrences for target_hydro
+species_hydro_counts <- mod_dat_wk %>%
+  # Filter rows where species have at least one detection
+  filter(Caribou >= 1 | Moose >= 1 | Muskox >= 1 | Gray.Wolf >= 1 | Grizzly.Bear >= 1) %>%
+  # Pivot the data longer to analyze each species individually
+  pivot_longer(cols = c(Caribou, Moose, Muskox, Gray.Wolf, Grizzly.Bear), 
+               names_to = "Species", 
+               values_to = "Detections") %>%
+  # Keep rows where species detections are greater than or equal to 1
+  filter(Detections >= 1) %>%
+  # Group by species and target_hydro
+  group_by(Species, target_hydro) %>%
+  # Count the number of occurrences for each combination
+  summarise(Count = n(), .groups = 'drop')
+
+# View the results for target_hydro
+print(species_hydro_counts)
+```
+
+
