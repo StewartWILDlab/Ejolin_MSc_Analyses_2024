@@ -1,0 +1,2254 @@
+---
+title: "GLMM_Create_Datasets"
+output: html_document
+date: "2024-04-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# README.
+
+This document is used to create the datasets to be used in GLMM analyses in the next script, 9d_AllSpatialScales_Weekly_Cleaned.Rmd
+
+This script also:
+- compares snow derived and biologically relevant caribou seasons for use in analyses. 
+- compared daily and weekly temporal sampling grain for use in analyses.
+- tested the significance of camera targets in each spatiotemporal dataset to test whether or not they should be included in analyses.
+
+# Load packages
+
+```{r}
+# Check you have them and load them
+list.of.packages <- c("kableExtra", "tidyr", "ggplot2", "gridExtra", "dplyr", "Hmsc", "jtools", "lubridate", "corrplot", "MuMIn","stringr","sf","raster","leaflet", "tidyverse","htmlwidgets","webshot", "purrr", "magick","forcats","multcomp", "reshape2", "lme4", "tidyr", "stats","RColorBrewer")
+
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+lapply(list.of.packages, require, character.only = TRUE)
+```
+
+#  Prepare Data
+
+```{r}
+locs <- read.csv("Processed_Data/TDN_camera_locations_and_covariates_cleaned.csv", header=T)
+
+# Convert to categorical factors
+locs <- locs %>% 
+            mutate_if(is.character,as.factor)
+
+# You should also standardize your covariates - it helps models coverage and facillitates comparison of effects sizes
+
+#IMPORTANT: NEED TO RUN THIS SO LAT/LONG DONT GET STANDARDIZED
+#non response variable species should be scaled but that can manually be done in the GLMM formulas
+library(MuMIn)
+z_locs <- stdize(locs, omit.cols = c("latitude","longitude","latitude_site","longitude_site","spatial_scale","X300_TSPNF","X300_SPTNF","X300_WET","X300_WAT","X300_MF","X300_TSPS", "X300_TSPG","X300_SPPSLM","X300_SPPGLM","X300_BAR","X300_TSPBDF","X300_MFBL","X300_NF","TUNDRA","TAIGA","MOIST"))
+```
+
+#######################################################################################################################################################################################################################################################################################################################################
+
+# Delineate Caribou Seasons (GPS)
+
+Rather than defining seasons using snow cover (which would be more suited to a multispecies analysis) I want to divide data by biologically relevant "caribou seasons". The problem here is that these seasons vary by date from year to year and from herd to herd based on GPS collar data. I have 2021-2022 dates for the Ahiak herd from GN reports but I don't have similar recent seasonal date ranges for the Bathurst/Beverly herds (date ranges used in many reports for the Bathurst herd are from a 2011 study). I do have telemetry data for the Bev/Bath caribou but it's clipped to the spatial extent of TDN. 
+
+Determine first obs, last obs, and number of days observed in TDN for each individual collared caribou using 2021/2022 collar data. Extracted attribute table as csv from shapefile using arcgis
+
+```{r}
+#read in collar data
+TDN_Bev_Bath_GPS<-read.csv("Raw_Data/TDN_Bev_Bath_Telemetry.csv")
+
+# Convert LoctnDt to Date format
+TDN_Bev_Bath_GPS$LoctnDt <- as.Date(TDN_Bev_Bath_GPS$LoctnDt)
+```
+
+Summarize the collar data
+```{r}
+# Group by AnimalId, Sex, and Herd, then summarize to find first date, last date, count of observations, and number of unique dates
+caribou_indv_summary <- TDN_Bev_Bath_GPS %>%
+  group_by(AnimlId, SEX, Herd) %>%
+  summarize(
+    FirstDate = min(LoctnDt),
+    LastDate = max(LoctnDt),
+    NumObservations = n(),
+    NumUniqueDates = n_distinct(LoctnDt)
+  )
+
+# Group by Herd, Sex, and then summarize to find first date, last date, count of observations, number of individuals, and number of unique dates
+herd_summary <- TDN_Bev_Bath_GPS %>%
+  group_by(Herd, SEX) %>%
+  summarize(
+    FirstDate = min(LoctnDt),
+    LastDate = max(LoctnDt),
+    NumObservations = n(),
+    NumIndividuals = n_distinct(AnimlId),
+    NumUniqueDates = n_distinct(LoctnDt)
+  )
+
+print(herd_summary)
+
+# If you want separate summaries for each Herd irrespective of sex
+herd_summary_no_sex <- TDN_Bev_Bath_GPS %>%
+  group_by(Herd) %>%
+  summarize(
+    FirstDate = min(LoctnDt),
+    LastDate = max(LoctnDt),
+    NumObservations = n(),
+    NumIndividuals = n_distinct(AnimlId),
+    NumUniqueDates = n_distinct(LoctnDt)
+  )
+```
+Herd       SEX    FirstDate  LastDate   NumObservations NumIndividuals NumUniqueDates
+  <chr>      <chr>  <date>     <date>               <int>          <int>          <int>
+1 Bathurst   Female 2021-10-27 2021-11-15              45              2             18
+2 Bathurst   Male   2021-10-29 2022-05-06             186              3             41
+3 Beverly    Female 2021-10-27 2022-01-17             707             16             83
+4 Beverly    Male   2021-10-29 2022-08-30            1049             12            215
+5 Unassigned Female 2021-11-18 2021-11-21               7              1              3
+
+Looks like the cows are only using TDN during Rut/Breeding, Fall Migration - post-breeding, and the start of Winter according to seasonal cutoff dates other Bathurst papers have used.
+
+Ahiak have slightly different seasonal cutoff dates but collared cows roughly use TDN in 2021/2022 in Late Summer, Fall migration - pre-breeding, Rut/breeding, Fall migration - post-breeding, Winter, no spring migration, then back for Summer and Late Summer. 
+
+If we used these dates, how do we account for the different herds? Ahiak/NE herds winter here but they're expected to winter on the tundra as opposed to Bev/Bath) and the seasons where we're less likely to have female caribou (i.e. summer/spring)
+
+#######################################################################################################################################################################################################################################################################################################################################
+
+# Multiseason, DAILY
+
+The telemetry data was informative but still found it difficult to set seasonal cutoff dates based on that alone. Plotting daily detection rate for caribou might be a better way to find natural seasonal breaks and is the most detailed data we have on hand. 
+
+Let's see how this breaks down into 1 day events to help determine seasonal breaks
+```{r}
+#Load biweekly detection data
+daily_obs<-read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_day.csv")
+```
+
+Join this dataframe with the standardized location data:
+```{r}
+mod_dat_daily <- left_join(daily_obs, z_locs)
+```
+
+And let’s do another raw data check:
+```{r}
+boxplot(mod_dat_daily$Caribou~mod_dat_daily$dom_habitat_lcc_hexagon,
+        las=2,
+        xlab="lcc landcover",
+        ylab="Habitat use")
+```
+
+##Add snow based seasons
+```{r}
+#format day as Date
+mod_dat_daily$day<-as.Date(mod_dat_daily$day)
+
+#create column season
+mod_dat_daily <- mod_dat_daily %>%
+  mutate(snow_season = ifelse(month(day) %in% c(5, 6, 7, 8, 9, 10), "summer", "winter"))
+
+# Get the column names
+column_names <- names(mod_dat_daily)
+
+# Reorder the columns
+new_column_order <- c(column_names[1:4], "snow_season", column_names[5:length(column_names)])
+
+# Create the reordered data frame
+mod_dat_daily <- mod_dat_daily[, new_column_order]
+
+# make it a factor factors
+mod_dat_daily <- mod_dat_daily %>% 
+            mutate_if(is.character,as.factor)
+
+```
+
+let's plot caribou detections summed across locations per day coloured by snow based seasons
+```{r}
+# Group by day and summarize the total Caribou count and effort
+daily_sum <- mod_dat_daily %>%
+  group_by(year = year(day), day, snow_season) %>%
+  summarise(total_caribou = sum(Caribou), total_effort = sum(n_days_effort))
+
+# Plot the data for total Caribou count
+ggplot(daily_sum, aes(x = day, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Count Summed Across Locations by Day",
+       x = "Day",
+       y = "Total Caribou Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))+
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y")
+
+
+# Plot the data for capture rate
+daily_sum$total_daily_cr <- (daily_sum$total_caribou / daily_sum$total_effort)
+
+ggplot(daily_sum, aes(x = day, y = total_daily_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Daily CR Across Locations by Day",
+       x = "Day",
+       y = "Total Caribou CR") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y")
+```
+
+## Add Caribou Seasons (Detection Data)
+
+Based on the daily detections it looks like caribou detection rate could be broken down into the following biologically relevant seasons based on natural breaks. These dates roughly conform to date ranges for the Beverly, Bathurst, and Ahiak herds listed in various GN and GNWT reports. 
+
+Typical caribou seasons (Nagy 2011 and GN use 9 seasons):
+July 29, 2021 - Oct 20, 2021: Summer/Late Summer
+Oct 21, 2021 - Oct 31, 2021: Pre-breeding Migration
+Nov 1, 2021 - Dec 14, 2021: Rut/Post-breeding Migration
+Dec 15, 2021 - Apr 4, 2022: Winter
+Apr 5, 2022 - May 14, 2022: Spring Migration
+May 15, 2022 - early June, 2022: Calving
+early June, 2022 - July 30, 2022: Post-calving/Summer
+July 31, 2022 - Aug 24, 2022: Late Summer
+
+Simplified 4 seasons (Bathurst Range Plan also uses 4):
+July 29, 2021 - Oct 20, 2021: Summer
+Oct 21, 2021 - Dec 14, 2021: Fall
+Dec 15, 2021 - Apr 4, 2022: Winter
+Apr 5, 2022 - June 21, 2022: Spring
+June 22, 2022 - Aug 24, 2022: Summer
+
+##Add simplified 4 seasons
+```{r}
+# Define function to assign seasons based on date
+assign_season <- function(date) {
+  case_when(
+    date >= as.Date("2021-07-29") & date <= as.Date("2021-10-20") ~ "Summer",
+    date >= as.Date("2021-10-21") & date <= as.Date("2021-12-14") ~ "Fall",
+    date >= as.Date("2021-12-15") & date <= as.Date("2022-04-04") ~ "Winter",
+    date >= as.Date("2022-04-05") & date <= as.Date("2022-06-21") ~ "Spring",
+    date >= as.Date("2022-06-22") & date <= as.Date("2022-08-24") ~ "Summer",
+    TRUE ~ "Unknown" # Default case
+  )
+}
+
+# Create new column "four_season"
+mod_dat_daily <- mod_dat_daily %>%
+  mutate(four_season = assign_season(day))
+
+# Get the column names
+column_names <- names(mod_dat_daily)
+
+# Reorder the columns
+new_column_order <- c(column_names[1:4], "snow_season", "four_season", column_names[5:length(column_names)])
+
+# Create the reordered data frame
+mod_dat_daily <- mod_dat_daily[, new_column_order]
+
+# Make sure it's a factor
+mod_dat_daily <- mod_dat_daily %>% 
+            mutate_if(is.character,as.factor)
+
+```
+
+let's plot it out
+```{r}
+# Group by day and summarize the total Caribou count and effort
+daily_sum <- mod_dat_daily %>%
+  group_by(year = year(day), day, four_season) %>%
+  summarise(total_caribou = sum(Caribou), total_effort = sum(n_days_effort))
+
+# Plot the data for total Caribou count
+ggplot(daily_sum, aes(x = day, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Count Summed Across Locations by Day",
+       x = "Day",
+       y = "Total Caribou Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y")
+
+
+# Plot the data for capture rate
+daily_sum$total_daily_cr <- (daily_sum$total_caribou / daily_sum$total_effort)
+
+ggplot(daily_sum, aes(x = day, y = total_daily_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Daily CR Across Locations by Day",
+       x = "Day",
+       y = "Total Caribou CR") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y")
+
+```
+
+###Updated colours for thesis
+
+I like this pallette better
+```{r}
+# Group by day and summarize the total Caribou count and effort
+daily_sum <- mod_dat_daily %>%
+  group_by(year = year(day), day, four_season) %>%
+  summarise(total_caribou = sum(Caribou), total_effort = sum(n_days_effort))
+
+# Define the colors for each season using specific colors from Paired
+season_colors <- c("Winter" = "#A6CEE3",  # Light Blue
+                   "Summer" = "#B2DF8A",  # Light Green
+                   "Spring" = "#CAB2D6",  # Light Purple
+                   "Fall" = "#FDBF6F")    # Light Orange
+
+# Plot the data for total Caribou count
+ggplot(daily_sum, aes(x = day, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(fill = "Season", 
+       x = "Day",
+       y = "Total Caribou Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
+  scale_fill_manual(values = season_colors)
+
+# Calculate the total daily capture rate
+daily_sum$total_daily_cr <- daily_sum$total_caribou / daily_sum$total_effort
+
+# Plot the data for capture rate
+ggplot(daily_sum, aes(x = day, y = total_daily_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(fill = "Season",
+       x = "Day",
+       y = "Caribou detection rate") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
+  scale_fill_manual(values = season_colors)
+```
+
+##Summary Stats
+
+###Capture Rate by Season
+```{r}
+# Summarize the total capture rate by season
+seasonal_capture_rate <- daily_sum %>%
+  group_by(four_season) %>%
+  summarise(total_daily_cr = sum(total_daily_cr))
+
+print(seasonal_capture_rate)
+
+```
+
+###Effort by season
+```{r}
+# Summarize the total effort by season
+seasonal_effort <- daily_sum %>%
+  group_by(four_season) %>%
+  summarise(total_effort = sum(total_effort))
+
+print(seasonal_effort)
+
+#calculate mean daily effort by season
+seasonal_mean_effort <- mod_dat_daily %>% 
+  group_by(four_season) %>% 
+  summarise(effort_Mean = mean(n_days_effort)) 
+
+print(seasonal_mean_effort)
+
+```
+
+###Plot daily effort
+```{r}
+# Summarize total days effort for each week
+total_days_effort <- mod_dat_daily %>%
+  group_by(day, four_season) %>%
+  summarise(total_effort = sum(n_days_effort), .groups = 'drop')
+
+print(total_days_effort)
+
+# Create the bar plot with colors based on the 'four_season' column
+ggplot(total_days_effort, aes(x = day, y = total_effort, fill = four_season)) +
+  geom_bar(stat = "identity") +  # Bar plot with black outlines
+  scale_fill_manual(values = season_colors) +     # Apply the season colors
+  labs(fill = "Season",
+       x = "Day of Year",
+       y = "Total Effort (Camera Days)") +
+  theme_minimal() +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#try out a line plot
+ggplot(total_days_effort, aes(x = day, y = total_effort)) +
+  geom_line(aes(color=four_season)) +  # Line plot
+  geom_point(aes(shape=four_season, color=four_season), size=2) +  # Optional: Add points to the line plot
+  scale_color_manual(values = season_colors) +
+  labs(color = "Season",
+       shape = "Season",
+       x = "Day",
+       y = "Total Effort (Days)") +
+  theme_minimal() +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
+########################################################################################################################################################################################################################################################################################################################################################################
+# REGIONAL EXTENT
+
+Create datasets to be used in subsequent analyses. Regional extent refers to all cameras across all of TDN
+
+#  Multiseason, WEEKLY detections
+```{r}
+# Import the total observations dataset
+weekly_obs <- read.csv("Processed_Data/wildRtrax/TDN_cam_summaries_week.csv", header=T)
+```
+
+Join this dataframe with the location data, as before:
+```{r}
+mod_dat_wk <- left_join(weekly_obs, z_locs)
+
+# Remove rows with year 2021 and weeks 30, 31, 32, or 33 due to low survey effort
+mod_dat_wk <- mod_dat_wk %>%
+  filter(!(year == 2021 & week %in% c(30, 31, 32, 33)))
+```
+
+Raw data check:
+```{r}
+boxplot(mod_dat_wk$Caribou~mod_dat_wk$dom_habitat_lcc_hexagon,
+        las=2,
+        xlab="lcc landcover",
+        ylab="Habitat use")
+```
+
+## Add snow based seasons
+```{r}
+# Lets create a new column and give it the value summer
+mod_dat_wk$snow_season <- "summer"
+mod_dat_wk$snow_season[mod_dat_wk$week %in% c(44:53,1:17)] <- "winter"
+
+# Get the column names
+column_names <- names(mod_dat_wk)
+
+# Reorder the columns
+new_column_order <- c(column_names[1:3], "snow_season", column_names[4:length(column_names)])
+
+# Create the reordered data frame
+mod_dat_wk <- mod_dat_wk[, new_column_order]
+
+# make it a factor factors
+mod_dat_wk <- mod_dat_wk %>% 
+            mutate_if(is.character,as.factor)
+
+```
+
+Plot caribou detections and rate summed across locations per week
+```{r}
+# Convert 'week' and 'year' to a Date object
+mod_dat_wk$week_year <- as.Date(paste(mod_dat_wk$year, mod_dat_wk$week, "1", sep="-"), format="%Y-%U-%u")
+
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Caribou),total_effort = sum(n_days_effort))
+
+#create capture rate 
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Caribou Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Caribou CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+```
+
+let's repeat this process with the new 4-season caribou based dates from the daily detection data
+
+Should the 4-seasons be based now on week instead of the daily detections even though it's less detailed?
+
+Decided to keep the dates based on daily detection rate due to higher resolution.
+
+based on daily detection rate:
+July 29, 2021 - Oct 20, 2021: Summer
+Oct 21, 2021 - Dec 14, 2021: Fall
+Dec 15, 2021 - Apr 4, 2022: Winter
+Apr 5, 2022 - June 21, 2022: Spring
+June 22, 2022 - Aug 24, 2022: Summer
+
+based on weekly detection rates? 
+July 26, 2021 - Oct 18, 2021: Summer
+Oct 25, 2021 - Dec 13, 2021: Fall
+Dec 20, 2021 - Apr 4, 2022: Winter
+Apr 11, 2022 - June 21, 2022: Spring
+June 22, 2022 - Aug 24, 2022: Summer
+
+## Add Caribou-centric Seasons
+```{r}
+# Let's create a new column for the four seasons based on the specified date ranges
+mod_dat_wk$four_season <- "Summer"
+mod_dat_wk$four_season[mod_dat_wk$week_year >= as.Date("2021-07-29") & mod_dat_wk$week_year <= as.Date("2021-10-20")] <- "Summer"
+mod_dat_wk$four_season[mod_dat_wk$week_year >= as.Date("2021-10-21") & mod_dat_wk$week_year <= as.Date("2021-12-14")] <- "Fall"
+mod_dat_wk$four_season[mod_dat_wk$week_year >= as.Date("2021-12-15") & mod_dat_wk$week_year <= as.Date("2022-04-04")] <- "Winter"
+mod_dat_wk$four_season[mod_dat_wk$week_year >= as.Date("2022-04-05") & mod_dat_wk$week_year <= as.Date("2022-06-21")] <- "Spring"
+mod_dat_wk$four_season[mod_dat_wk$week_year >= as.Date("2022-06-22") & mod_dat_wk$week_year <= as.Date("2022-08-24")] <- "Summer"
+
+# Get the column names
+column_names <- names(mod_dat_wk)
+
+# Reorder the columns
+new_column_order <- c(column_names[1:3], "four_season", column_names[4:length(column_names)])
+
+# Create the reordered data frame
+mod_dat_wk <- mod_dat_wk[, new_column_order]
+
+# Make it a factor
+mod_dat_wk <- mod_dat_wk %>% 
+            mutate_if(is.character, as.factor)
+```
+
+Plot it out
+```{r}
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Caribou), total_effort = sum(n_days_effort))
+
+# Create capture rate per 7 days
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Caribou Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Caribou CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+##Summary Stats
+
+###Capture Rate by Season
+```{r}
+# Summarize the total capture rate by season
+seasonal_capture_rate <- weekly_sum %>%
+  group_by(four_season) %>%
+  summarise(total_weekly_cr = sum(total_weekly_cr))
+
+print(seasonal_capture_rate)
+
+# Calculate the average weekly capture rate by season
+avg_weekly_cr_season <- weekly_sum %>%
+  group_by(four_season) %>%
+  summarise(avg_weekly_cr = mean(total_weekly_cr))
+
+print(avg_weekly_cr_season)
+```
+
+###Effort by season
+```{r}
+# Summarize the total effort by season
+seasonal_effort_wk <- weekly_sum %>%
+  group_by(four_season) %>%
+  summarise(total_effort = sum(total_effort))
+
+print(seasonal_effort_wk)
+
+#calculate mean weekly effort by season
+seasonal_mean_effort_wk <- mod_dat_wk %>% 
+  group_by(four_season) %>% 
+  summarise(effort_Mean = mean(n_days_effort)) 
+
+print(seasonal_mean_effort_wk)
+
+```
+
+###Effort by Month
+```{r}
+# Let's create a new column for the month/year based on the specified date ranges
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2021-07-29") & mod_dat_wk$week_year <= as.Date("2021-08-31")] <- "2021-08"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2021-09-01") & mod_dat_wk$week_year <= as.Date("2021-09-30")] <- "2021-09"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2021-10-01") & mod_dat_wk$week_year <= as.Date("2021-10-31")] <- "2021-10"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2021-11-01") & mod_dat_wk$week_year <= as.Date("2021-11-30")] <- "2021-11"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2021-12-01") & mod_dat_wk$week_year <= as.Date("2021-12-31")] <- "2021-12"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2022-01-01") & mod_dat_wk$week_year <= as.Date("2022-01-31")] <- "2022-01"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2022-02-01") & mod_dat_wk$week_year <= as.Date("2022-02-28")] <- "2022-02"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2022-03-01") & mod_dat_wk$week_year <= as.Date("2022-03-31")] <- "2022-03"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2022-04-01") & mod_dat_wk$week_year <= as.Date("2022-04-30")] <- "2022-04"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2022-05-01") & mod_dat_wk$week_year <= as.Date("2022-05-31")] <- "2022-05"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2022-06-01") & mod_dat_wk$week_year <= as.Date("2022-06-30")] <- "2022-06"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2022-07-01") & mod_dat_wk$week_year <= as.Date("2022-07-31")] <- "2022-07"
+mod_dat_wk$month[mod_dat_wk$week_year >= as.Date("2022-08-01") & mod_dat_wk$week_year <= as.Date("2022-08-31")] <- "2022-08"
+
+# Get the column names
+column_names <- names(mod_dat_wk)
+
+# Reorder the columns
+new_column_order <- c(column_names[1:5], "month", column_names[6:length(column_names)])
+
+# Create the reordered data frame
+mod_dat_wk <- mod_dat_wk[, new_column_order]
+
+# Make it a factor
+mod_dat_wk <- mod_dat_wk %>% 
+            mutate_if(is.character, as.factor)
+
+#calculate mean weekly effort by month/year
+monthly_mean_effort_wk <- mod_dat_wk %>% 
+  group_by(month) %>% 
+  summarise(effort_Mean = mean(n_days_effort)) 
+
+print(monthly_mean_effort_wk)
+```
+
+###Capture Rate by Month 
+```{r}
+# Calculate the average weekly capture rate by month
+avg_weekly_cr_month <- mod_dat_wk %>%
+  group_by(month) %>%
+  summarise(total_caribou = sum(Caribou), total_effort = sum(n_days_effort)) %>%
+  mutate(avg_weekly_cr = (total_caribou / total_effort) * 7)
+
+print(avg_weekly_cr_month)
+
+```
+
+
+###Plot weekly effort
+```{r}
+# Summarize total days effort for each week
+total_weeks_effort <- mod_dat_wk %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_effort = sum(n_days_effort), .groups = 'drop')
+
+# Convert 'week_year' to Date format if not already done
+total_weeks_effort$week_year <- as.Date(total_weeks_effort$week_year, format = "%Y-%m-%d")
+
+# Create the bar plot with colors based on the 'four_season' column
+ggplot(total_weeks_effort, aes(x = week_year, y = total_effort, fill = four_season)) +
+  geom_bar(stat = "identity") +  # Bar plot with black outlines
+  scale_fill_manual(values = season_colors) +     # Apply the season colors
+  labs(fill = "Season",
+       x = "Week of Year",
+       y = "Total Effort (Camera Days)") +
+  theme_minimal() +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +  # Format the x-axis for weekly data
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
+##Consolidate Ungulates and Predators
+```{r}
+# Create new columns "Ungulates" and "Predators" by summing the respective columns
+mod_dat_wk$Ungulates <- mod_dat_wk$Muskox + mod_dat_wk$Moose
+mod_dat_wk$Predators <- mod_dat_wk$Gray.Wolf + mod_dat_wk$Grizzly.Bear
+```
+
+##Plotting
+Create the same plots for each of the other focal species
+Muskox
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Muskox),total_effort = sum(n_days_effort))
+
+#create capture rate 
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Muskox Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Muskox Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Muskox Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Muskox CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Muskox), total_effort = sum(n_days_effort))
+
+# Create capture rate  
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Muskox Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Muskox Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Muskox Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Muskox CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+Moose
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Moose),total_effort = sum(n_days_effort))
+
+#create capture rate 
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Moose Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Moose Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Moose Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Moose CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Moose), total_effort = sum(n_days_effort))
+
+# Create capture rate 
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Moose Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Moose Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Moose Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Moose CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+Gray.Wolf
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Gray.Wolf),total_effort = sum(n_days_effort))
+
+#create capture rate 
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Gray Wolf Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Gray Wolf Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Gray Wolf Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Gray Wolf CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Gray.Wolf), total_effort = sum(n_days_effort))
+
+# Create capture rate 
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Gray Wolf Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Gray Wolf Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Gray Wolf Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Gray Wolf CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+Grizzly.Bear
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Grizzly.Bear),total_effort = sum(n_days_effort))
+
+#create capture rate 
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Grizzly Bear Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Grizzly Bear Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Grizzly Bear Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Grizzly Bear CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Grizzly.Bear), total_effort = sum(n_days_effort))
+
+# Create capture rate 
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Grizzly Bear Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Grizzly Bear Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Grizzly Bear Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Grizzly Bear CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+Ungulates
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Ungulates),total_effort = sum(n_days_effort))
+
+#create capture rate 
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Ungulate Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Ungulate Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Ungulate Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Ungulate CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Ungulates), total_effort = sum(n_days_effort))
+
+# Create capture rate 
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Ungulate Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Ungulate Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Ungulate Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Ungulate CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+Predators
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Predators),total_effort = sum(n_days_effort))
+
+#create capture rate 
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Predator Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Predator Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Predator Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Predator CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Predators), total_effort = sum(n_days_effort))
+
+# Create capture rate 
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Predator Count Summed Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Predator Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Predator Weekly CR Across Region by Week",
+       x = "Week of the Year",
+       y = "Total Predator CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+map it out
+```{r}
+# Aggregate data by location and week to get total caribou detections
+#total_caribou_by_location_week <- mod_dat_wk %>%
+ # group_by(location, week) %>%
+  #summarise(total_caribou = sum(Caribou))
+
+# Merge total caribou detections with latitude and longitude data
+#locations_week <- mod_dat_wk %>%
+ # distinct(location, latitude, longitude)
+
+#locations_week <- left_join(locations_week, total_caribou_by_location_week, by = "location") %>%
+ # mutate(has_detections = if_else(is.na(total_caribou) | total_caribou == 0, FALSE, TRUE))
+
+# Create leaflet maps for each week
+#maps_folder <- "maps"
+#dir.create(maps_folder, showWarnings = FALSE)
+
+#for (week in unique(mod_dat_wk$week)) {
+ # map_data_week <- filter(locations_week, week == !!week)
+  #map <- leaflet(map_data_week) %>%
+   # addTiles() %>%
+    #addCircleMarkers(
+     # ~longitude, 
+      #~latitude, 
+      #radius = ~if_else(has_detections, sqrt(total_caribou) * 2, 2), 
+      #color = ~if_else(has_detections, "blue", "grey"), 
+      #popup = ~paste("Location:", location, "<br>", "Total Caribou Detections:", total_caribou)
+    #)
+  
+  # Save the map as HTML
+  #map_file <- file.path(maps_folder, paste0("map_week_", week, ".html"))
+#  saveWidget(map, map_file, selfcontained = TRUE)
+#}
+
+```
+
+```{r}
+# Function to read HTML files and convert them to images
+#html_to_image <- function(html_file) {
+#  webshot::webshot(html_file, file = tempfile(fileext = ".png"))
+#}
+
+# Read each HTML file, convert to images, and store them in a list
+#map_images <- lapply(list.files("maps", pattern = "*.html", full.names = TRUE), html_to_image)
+
+# Create the animated GIF
+#gif_file <- "caribou_detections.gif"
+#image_write(image_join(map_images), gif_file)
+
+# Display the GIF
+#browseURL(gif_file)
+```
+
+##Target Analysis
+```{r}
+# Reorder the levels of the target_cons column
+mod_dat_wk$target_cons <- fct_relevel(mod_dat_wk$target_cons, "None")
+
+#check the levels were reordered correctly. None should be first to act as the control feature. 
+levels(mod_dat_wk$target_cons)
+
+# Group by target_cons and count unique locations within each group
+unique_locations_by_target <- mod_dat_wk %>%
+  group_by(target_cons) %>%
+  summarise(unique_locations = n_distinct(location))
+
+# Print the result
+print(unique_locations_by_target)
+
+#run anova to determine whether targets are actually significantly related to our response variable (Caribou occurrences in a given week at a given camera)
+
+region_wk_aov <- aov(Caribou ~ target_cons, data=mod_dat_wk)
+summary(region_wk_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_aov)
+
+# View the results
+print(tukey_results)
+```
+
+perform the same tests on the new target_hydro (wetland shoreline) and target_linear (trail esker) categories. These targets have been separated because their predicted to have similar effects on caribou occurrences. 
+
+```{r}
+# Reorder the levels of the target_hydro column
+mod_dat_wk$target_hydro <- fct_relevel(mod_dat_wk$target_hydro, "None")
+
+#check the levels were reordered correctly. None should be first to act as the control feature. 
+levels(mod_dat_wk$target_hydro)
+
+#run anova on hydro targets
+region_wk_hydro_aov <- aov(Caribou ~ target_hydro, data=mod_dat_wk)
+summary(region_wk_hydro_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_hydro_aov)
+
+# View the results
+print(tukey_results)
+```
+Not significant.
+
+```{r}
+# Reorder the levels of the target_linear column
+mod_dat_wk$target_linear <- fct_relevel(mod_dat_wk$target_linear, "None")
+
+#check the levels were reordered correctly. None should be first to act as the control feature. 
+levels(mod_dat_wk$target_linear)
+
+#run anova on linear targets
+region_wk_linear_aov <- aov(Caribou ~ target_linear, data=mod_dat_wk)
+summary(region_wk_linear_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_linear_aov)
+
+# View the results
+print(tukey_results)
+```
+                 Df Sum Sq Mean Sq F value   Pr(>F)    
+target_linear     2     45  22.351   16.79 5.23e-08 ***
+
+$target_linear
+                  diff        lwr         upr     p adj
+Esker-None   0.3412555  0.1175085  0.56500256 0.0010243
+Trail-None  -0.1534721 -0.2346369 -0.07230728 0.0000280
+
+############################################################################################################################################################################################################################
+  
+# Summer, WEEKLY detection data
+```{r}
+# Create a new data frame for summer
+mod_dat_wk_summer <- mod_dat_wk[mod_dat_wk$four_season == "Summer", ]
+```
+
+let's try to map er out
+```{r}
+# Aggregate data by location to get total caribou detections
+total_caribou_by_location <- mod_dat_wk_summer %>%
+  group_by(location) %>%
+  summarise(total_caribou = sum(Caribou))
+
+# Merge total caribou detections with latitude and longitude data
+locations <- mod_dat_wk_summer %>%
+  distinct(location, latitude, longitude)
+
+locations <- left_join(locations, total_caribou_by_location, by = "location") %>%
+  mutate(has_detections = if_else(is.na(total_caribou) | total_caribou == 0, FALSE, TRUE))
+
+# Create leaflet map
+leaflet(locations) %>%
+  addTiles() %>%
+  addCircleMarkers(
+    ~longitude, 
+    ~latitude, 
+    radius = ~if_else(has_detections, sqrt(total_caribou) * 2, 2), 
+    color = ~if_else(has_detections, "blue", "grey"), 
+    popup = ~paste("Location:", location, "<br>", "Total Caribou Detections:", total_caribou)
+  )
+```
+
+##Target analysis
+```{r}
+#run anova to determine whether targets are actually significantly related to our response variable (Caribou occurrences in a given week at a given camera)
+
+region_wk_smr_aov <- aov(Caribou ~ target_cons, data=mod_dat_wk_summer)
+summary(region_wk_smr_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_smr_aov)
+
+# View the results
+print(tukey_results)
+```
+
+```{r}
+#run anova on hydro targets
+region_wk_smr_hydro_aov <- aov(Caribou ~ target_hydro, data=mod_dat_wk_summer)
+summary(region_wk_smr_hydro_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_smr_hydro_aov)
+
+# View the results
+print(tukey_results)
+```
+                Df Sum Sq Mean Sq F value  Pr(>F)   
+target_hydro    2      9   4.376   6.301 0.00185 **
+
+                         diff         lwr         upr     p adj
+Shoreline-None     0.14233231  0.02655834  0.25810628 0.0110639
+
+```{r}
+#run anova on linear targets
+region_wk_smr_linear_aov <- aov(Caribou ~ target_linear, data=mod_dat_wk_summer)
+summary(region_wk_smr_linear_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_smr_linear_aov)
+
+# View the results
+print(tukey_results)
+```
+Not significant
+
+############################################################################################################################################################################################################################
+
+# Fall, WEEKLY detection data
+```{r}
+# Create a new data frame for winter
+mod_dat_wk_fall <- mod_dat_wk[mod_dat_wk$four_season == "Fall", ]
+```
+
+plot it out
+```{r}
+# Aggregate data by location to get total caribou detections
+total_caribou_by_location <- mod_dat_wk_fall %>%
+  group_by(location) %>%
+  summarise(total_caribou = sum(Caribou))
+
+# Merge total caribou detections with latitude and longitude data
+locations <- mod_dat_wk_fall %>%
+  distinct(location, latitude, longitude)
+
+locations <- left_join(locations, total_caribou_by_location, by = "location") %>%
+  mutate(has_detections = if_else(is.na(total_caribou) | total_caribou == 0, FALSE, TRUE))
+
+# Create leaflet map
+leaflet(locations) %>%
+  addTiles() %>%
+  addCircleMarkers(
+    ~longitude, 
+    ~latitude, 
+    radius = ~if_else(has_detections, sqrt(total_caribou) * 2, 2), 
+    color = ~if_else(has_detections, "blue", "grey"), 
+    popup = ~paste("Location:", location, "<br>", "Total Caribou Detections:", total_caribou)
+  )
+```
+
+##Target analysis
+```{r}
+#run anova to determine whether targets are actually significantly related to our response variable (Caribou occurrences in a given week at a given camera)
+
+region_wk_fll_aov <- aov(Caribou ~ target_cons, data=mod_dat_wk_fall)
+summary(region_wk_fll_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_fll_aov)
+
+# View the results
+print(tukey_results)
+```
+
+```{r}
+#run anova on hydro targets
+region_wk_fll_hydro_aov <- aov(Caribou ~ target_hydro, data=mod_dat_wk_fall)
+summary(region_wk_fll_hydro_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_fll_hydro_aov)
+
+# View the results
+print(tukey_results)
+```
+Not significant 
+
+```{r}
+#run anova on linear targets
+region_wk_fll_linear_aov <- aov(Caribou ~ target_linear, data=mod_dat_wk_fall)
+summary(region_wk_fll_linear_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_fll_linear_aov)
+
+# View the results
+print(tukey_results)
+```
+                Df Sum Sq Mean Sq F value   Pr(>F)    
+target_linear    2    122   60.97   10.51 2.87e-05 ***
+              
+               diff         lwr         upr     p adj
+Trail-None  -0.7381761 -1.1721914 -0.3041608 0.0002027
+
+
+################################################################################################################################################################################################################################################
+
+# Winter, WEEKLY detection data
+```{r}
+# Create a new data frame for winter
+mod_dat_wk_winter <- mod_dat_wk[mod_dat_wk$four_season == "Winter", ]
+```
+
+plot it out
+```{r}
+# Aggregate data by location to get total caribou detections
+total_caribou_by_location <- mod_dat_wk_winter %>%
+  group_by(location) %>%
+  summarise(total_caribou = sum(Caribou))
+
+# Merge total caribou detections with latitude and longitude data
+locations <- mod_dat_wk_winter %>%
+  distinct(location, latitude, longitude)
+
+locations <- left_join(locations, total_caribou_by_location, by = "location") %>%
+  mutate(has_detections = if_else(is.na(total_caribou) | total_caribou == 0, FALSE, TRUE))
+
+# Create leaflet map
+leaflet(locations) %>%
+  addTiles() %>%
+  addCircleMarkers(
+    ~longitude, 
+    ~latitude, 
+    radius = ~if_else(has_detections, sqrt(total_caribou) * 2, 2), 
+    color = ~if_else(has_detections, "blue", "grey"), 
+    popup = ~paste("Location:", location, "<br>", "Total Caribou Detections:", total_caribou)
+  )
+```
+
+##Target analysis
+```{r}
+#run anova to determine whether targets are actually significantly related to our response variable (Caribou occurrences in a given week at a given camera)
+
+region_wk_wtr_aov <- aov(Caribou ~ target_cons, data=mod_dat_wk_winter)
+summary(region_wk_wtr_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_wtr_aov)
+
+# View the results
+print(tukey_results)
+```
+
+```{r}
+#run anova on hydro targets
+region_wk_wtr_hydro_aov <- aov(Caribou ~ target_hydro, data=mod_dat_wk_winter)
+summary(region_wk_wtr_hydro_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_wtr_hydro_aov)
+
+# View the results
+print(tukey_results)
+```
+Not significant
+
+```{r}
+#run anova on linear targets
+region_wk_wtr_linear_aov <- aov(Caribou ~ target_linear, data=mod_dat_wk_winter)
+summary(region_wk_wtr_linear_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_wtr_linear_aov)
+
+# View the results
+print(tukey_results)
+```
+                Df Sum Sq Mean Sq F value   Pr(>F)    
+target_linear    2    8.9   4.470   23.12 1.08e-10 ***
+
+                   diff        lwr         upr     p adj
+Esker-None   0.45396375  0.2897541  0.61817339 0.0000000
+
+
+############################################################################################################################################################################################################################
+
+# Spring, WEEKLY detection data
+```{r}
+# Create a new data frame for winter
+mod_dat_wk_spri <- mod_dat_wk[mod_dat_wk$four_season == "Spring", ]
+```
+
+plot it out
+```{r}
+# Aggregate data by location to get total caribou detections
+total_caribou_by_location <- mod_dat_wk_spri %>%
+  group_by(location) %>%
+  summarise(total_caribou = sum(Caribou))
+
+# Merge total caribou detections with latitude and longitude data
+locations <- mod_dat_wk_spri %>%
+  distinct(location, latitude, longitude)
+
+locations <- left_join(locations, total_caribou_by_location, by = "location") %>%
+  mutate(has_detections = if_else(is.na(total_caribou) | total_caribou == 0, FALSE, TRUE))
+
+# Create leaflet map
+leaflet(locations) %>%
+  addTiles() %>%
+  addCircleMarkers(
+    ~longitude, 
+    ~latitude, 
+    radius = ~if_else(has_detections, sqrt(total_caribou) * 2, 2), 
+    color = ~if_else(has_detections, "blue", "grey"), 
+    popup = ~paste("Location:", location, "<br>", "Total Caribou Detections:", total_caribou)
+  )
+```
+
+##Target analysis
+```{r}
+#run anova to determine whether targets are actually significantly related to our response variable (Caribou occurrences in a given week at a given camera)
+
+region_wk_spr_aov <- aov(Caribou ~ target_cons, data=mod_dat_wk_spri)
+summary(region_wk_spr_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_spr_aov)
+
+# View the results
+print(tukey_results)
+```
+
+```{r}
+#run anova on hydro targets
+region_wk_spr_hydro_aov <- aov(Caribou ~ target_hydro, data=mod_dat_wk_spri)
+summary(region_wk_spr_hydro_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_spr_hydro_aov)
+
+# View the results
+print(tukey_results)
+```
+Not Significant 
+
+```{r}
+#run anova on linear targets
+region_wk_spr_linear_aov <- aov(Caribou ~ target_linear, data=mod_dat_wk_spri)
+summary(region_wk_spr_linear_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_spr_linear_aov)
+
+# View the results
+print(tukey_results)
+```
+Not Significant
+
+################################################################################################################################################################################################################################################################################################################################################################
+
+# LOCAL EXTENT
+
+Local extent includes all cameras within clusters where at least one camera had at least one caribou detection at any point in the year, represents the actual home range during this sampling period.
+
+Subset detection data to only the clusters which captured caribou at a least one of their cameras. Must be subset after joining with covariates to filter by location_site. Must decide on response variable time (i.e. week, biweek) before trying this to cut down on time. 
+
+I think weekly is probably the way to go. it's a good balance of high detail without being so coarse as to become irrelevant for species co-occurrences. It also provides adequate survey replicas when running 4 separate seasonal models.
+
+##UPDATE: 2024-03-21 ##############################################################
+
+Realized that you can't just subset the data based on caribou detections being greater than 1 because you want to keep ALL cameras and ALL sampling periods at clusters with at least one caribou, whereas the original code was only taking the cameras/sampling periods with caribou and dumping everything else. Need to figure out how to keep only those cameras (i.e. location) which had at least 1 caribou detection at the cluster level (i.e. location_site).
+
+##UPDATE: 2024-03-22 ##############################################################
+
+OKAY I THINK I FIXED IT.
+
+weekly caribou data
+```{r}
+# Filter rows where "Caribou" is greater than or equal to 1
+caribou_data <- mod_dat_wk %>%
+  filter(Caribou >= 1) %>%
+  dplyr::select(location, location_site) %>%
+  distinct()
+
+# Filter mod_dat_wk for rows with locations that have caribou detections or share the same location_site
+mod_dat_wk_cbou <- mod_dat_wk %>%
+  filter(location %in% caribou_data$location | location_site %in% caribou_data$location_site)
+
+```
+
+Better to use biological rationale for choosing the local sites rather than a detection based criteria? Proportion of "TUNDRA" vs "TAIGA"? Compare with locations from caribou based data above.
+```{r}
+# Create a new dataframe with rows where z.TUNDRA > z.TAIGA
+#mod_dat_wk_tundra <- mod_dat_wk %>%
+#  filter(z.TUNDRA > z.TAIGA)
+```
+
+Compare with locations from caribou detection filtered data
+```{r}
+# Get unique locations in mod_dat_wk_tundra
+#unique_locations_tundra <- unique(mod_dat_wk_tundra$location)
+
+# Get unique locations in mod_dat_wk_cbou
+#unique_locations_cbou <- unique(mod_dat_wk_cbou$location)
+
+# Compare unique locations
+#common_locations <- intersect(unique_locations_tundra, unique_locations_cbou)
+#only_in_tundra <- setdiff(unique_locations_tundra, unique_locations_cbou)
+#only_in_cbou <- setdiff(unique_locations_cbou, unique_locations_tundra)
+
+# Output the results
+#cat("Common locations:", common_locations, "\n")
+#cat("Locations only in mod_dat_wk_tundra:", only_in_tundra, "\n")
+#cat("Locations only in mod_dat_wk_cbou:", only_in_cbou, "\n")
+
+```
+
+Map it out to see the cameras visually 
+```{r}
+# Create a leaflet map
+#map <- leaflet() %>%
+#  addTiles() %>%
+#  addCircleMarkers(data = mod_dat_wk_tundra[mod_dat_wk_tundra$location %in% common_locations,],
+#                   lat = ~latitude,
+#                   lng = ~longitude,
+#                   label = ~paste(location, " (Common)"),
+#                   color = "blue",
+#                   radius = 5) %>%
+#  addCircleMarkers(data = mod_dat_wk_cbou[mod_dat_wk_cbou$location %in% common_locations,],
+#                   lat = ~latitude,
+#                   lng = ~longitude,
+#                   label = ~paste(location, " (Common)"),
+#                   color = "red",
+#                   radius = 5) %>%
+#  addCircleMarkers(data = mod_dat_wk_tundra[mod_dat_wk_tundra$location %in% unique_locations_tundra,],
+#                   lat = ~latitude,
+#                   lng = ~longitude,
+#                   label = ~paste(location, " (Tundra)"),
+#                   color = "green",
+#                   radius = 5) %>%
+#  addCircleMarkers(data = mod_dat_wk_cbou[mod_dat_wk_cbou$location %in% unique_locations_cbou,],
+#                   lat = ~latitude,
+#                   lng = ~longitude,
+#                   label = ~paste(location, " (Caribou)"),
+#                   color = "orange",
+#                   radius = 5) %>%
+#  addLegend("bottomright",
+#            colors = c("blue", "red", "green", "orange"),
+#            labels = c("Common (Tundra)", "Common (Caribou)", "Unique (Tundra)", "Unique (Caribou)"))
+
+# Print the map
+#map
+```
+Very annoyingly, there is one single camera with caribou detections which is not in a majority tundra-type landcover area.
+
+BIO-TDN-050-06 has only two independent detections, both on 2021-11-24, first of a large bachelor group during the day and next of two females that night. Right in the transitional area between tundra and taiga but the camera micro site is very much needle leaf forest.
+
+The rationale for using caribou detection data to define the local extent is that we want the spatial extent to be biologically relevant to caribou in TDN specifically and from 2021-22 specifically. 
+
+##Plotting
+
+Local Scale
+Caribou
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Caribou),total_effort = sum(n_days_effort))
+
+#create capture rate 
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Caribou Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Caribou CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Caribou), total_effort = sum(n_days_effort))
+
+# Create capture rate 
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Caribou Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Caribou Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Caribou CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+Muskox
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Muskox),total_effort = sum(n_days_effort))
+
+#create capture rate 
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Muskox Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Muskox Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Muskox Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Muskox CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Muskox), total_effort = sum(n_days_effort))
+
+# Create capture rate 
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Muskox Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Muskox Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Muskox Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Muskox CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+Moose
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Moose),total_effort = sum(n_days_effort))
+
+#create capture rate 
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Moose Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Moose Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Moose Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Moose CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Moose), total_effort = sum(n_days_effort))
+
+# Create capture rate 
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Moose Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Moose Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Moose Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Moose CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+Gray.Wolf
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Gray.Wolf),total_effort = sum(n_days_effort))
+
+#create capture rate 
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Gray Wolf Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Gray Wolf Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Gray Wolf Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Gray Wolf CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Gray.Wolf), total_effort = sum(n_days_effort))
+
+# Create capture rate 
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Gray Wolf Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Gray Wolf Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Gray Wolf Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Gray Wolf CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+Grizzly.Bear
+```{r}
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, snow_season) %>%
+  summarise(total_caribou = sum(Grizzly.Bear),total_effort = sum(n_days_effort))
+
+#create capture rate 
+weekly_sum$total_weekly_cr<-((weekly_sum$total_caribou)/(weekly_sum$total_effort)*7)
+
+# Plot the count data with color based on the 'season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Grizzly Bear Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Grizzly Bear Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8))
+
+#plot the Capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = snow_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Grizzly Bear Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Grizzly Bear CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y.%m.%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=8)) 
+
+# Let's look at caribou detections summed across locations per week
+# Group by week_year and summarize the total Caribou count and effort
+weekly_sum <- mod_dat_wk_cbou %>%
+  group_by(week_year, four_season) %>%
+  summarise(total_caribou = sum(Grizzly.Bear), total_effort = sum(n_days_effort))
+
+# Create capture rate 
+weekly_sum$total_weekly_cr <- (weekly_sum$total_caribou / weekly_sum$total_effort) * 7
+
+# Plot the count data with color based on the 'four_season' column
+ggplot(weekly_sum, aes(x = week_year, y = total_caribou, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Grizzly Bear Count Summed Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Grizzly Bear Count") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8))
+
+# Plot the capture rate
+ggplot(weekly_sum, aes(x = week_year, y = total_weekly_cr, fill = four_season)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Total Grizzly Bear Weekly CR Across Local Scale by Week",
+       x = "Week of the Year",
+       y = "Total Grizzly Bear CR") +
+  theme_minimal() +
+  scale_x_date(labels = scales::date_format("%Y-%m-%d"), date_breaks = "1 week") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) 
+```
+
+
+################################################################################################################################################################################
+
+# Local, Multiseason, WEEK
+
+##Target analysis
+```{r}
+# Reorder the levels of the target_cons column
+mod_dat_wk_cbou$target_cons <- fct_relevel(mod_dat_wk_cbou$target_cons, "None")
+
+#check the levels were reordered correctly. None should be first to act as the control feature. 
+levels(mod_dat_wk_cbou$target_cons)
+
+# Group by target_cons and count unique locations within each group
+unique_cbou_locations_by_target <- mod_dat_wk_cbou %>%
+  group_by(target_cons) %>%
+  summarise(unique_locations = n_distinct(location))
+
+# Print the result
+print(unique_cbou_locations_by_target)
+
+#run anova to determine whether targets are actually significantly related to our response variable (Caribou occurrences in a given week at a given camera)
+
+region_wk_cbou_aov <- aov(Caribou ~ target_cons, data=mod_dat_wk_cbou)
+summary(region_wk_cbou_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_cbou_aov)
+
+# View the results
+print(tukey_results)
+```
+
+```{r}
+#run anova on hydro targets
+region_wk_cbou_hydro_aov <- aov(Caribou ~ target_hydro, data=mod_dat_wk_cbou)
+summary(region_wk_cbou_hydro_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_cbou_hydro_aov)
+
+# View the results
+print(tukey_results)
+```
+Not significant (wetland-none is close though at 0.07)
+
+```{r}
+#run anova on linear targets
+region_wk_cbou_linear_aov <- aov(Caribou ~ target_linear, data=mod_dat_wk_cbou)
+summary(region_wk_cbou_linear_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_cbou_linear_aov)
+
+# View the results
+print(tukey_results)
+```
+Not Significant
+
+############################################################################################################################################################################################################################
+  
+# Local, Summer, WEEKLY detection data
+```{r}
+# Create a new data frame for summer
+mod_dat_wk_cbou_summer <- mod_dat_wk_cbou[mod_dat_wk_cbou$four_season == "Summer", ]
+```
+
+##Target analysis
+```{r}
+# Group by target_cons and count unique locations within each group
+unique_cbou_locations_by_target_smr <- mod_dat_wk_cbou_summer %>%
+  group_by(target_cons) %>%
+  summarise(unique_locations = n_distinct(location))
+
+# Print the result
+print(unique_cbou_locations_by_target_smr)
+
+#run anova to see if target is important
+region_wk_cbou_smr_aov <- aov(Caribou ~ target_cons, data=mod_dat_wk_cbou_summer)
+summary(region_wk_cbou_smr_aov)
+
+# Perform Tukey's HSD test to interpret ANOVA
+tukey_results <- TukeyHSD(region_wk_cbou_smr_aov)
+
+# View the results
+print(tukey_results)
+```
+
+```{r}
+#run anova on hydro targets
+region_wk_cbou_smr_hydro_aov <- aov(Caribou ~ target_hydro, data=mod_dat_wk_cbou_summer)
+summary(region_wk_cbou_smr_hydro_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_cbou_smr_hydro_aov)
+
+# View the results
+print(tukey_results)
+```
+               Df Sum Sq Mean Sq F value  Pr(>F)   
+target_hydro    2     14   6.912   4.952 0.00715 **
+
+                        diff         lwr         upr     p adj
+Wetland-Shoreline -0.3415549 -0.59747378 -0.08563595 0.0050335
+
+******Not significantly different from NONE
+
+```{r}
+#run anova on linear targets
+region_wk_cbou_smr_linear_aov <- aov(Caribou ~ target_linear, data=mod_dat_wk_cbou_summer)
+summary(region_wk_cbou_smr_linear_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_cbou_smr_linear_aov)
+
+# View the results
+print(tukey_results)
+```
+Not Significant
+
+############################################################################################################################################################################################################################
+
+# Local, Fall, WEEKLY detection data
+```{r}
+# Create a new data frame for winter
+mod_dat_wk_cbou_fall <- mod_dat_wk_cbou[mod_dat_wk_cbou$four_season == "Fall", ]
+```
+
+##Target analysis
+```{r}
+# Group by target_cons and count unique locations within each group
+unique_cbou_locations_by_target_fall <- mod_dat_wk_cbou_fall %>%
+  group_by(target_cons) %>%
+  summarise(unique_locations = n_distinct(location))
+
+# Print the result
+print(unique_cbou_locations_by_target_fall)
+
+#run anova to see if target is important
+region_wk_cbou_fll_aov <- aov(Caribou ~ target_cons, data=mod_dat_wk_cbou_fall)
+summary(region_wk_cbou_fll_aov)
+
+# Perform Tukey's HSD test to interpret ANOVA
+tukey_results <- TukeyHSD(region_wk_cbou_fll_aov)
+
+# View the results
+print(tukey_results)
+```
+
+```{r}
+#run anova on hydro targets
+region_wk_cbou_fll_hydro_aov <- aov(Caribou ~ target_hydro, data=mod_dat_wk_cbou_fall)
+summary(region_wk_cbou_fll_hydro_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_cbou_fll_hydro_aov)
+
+# View the results
+print(tukey_results)
+```
+Not Significant
+
+```{r}
+#run anova on linear targets
+region_wk_cbou_fll_linear_aov <- aov(Caribou ~ target_linear, data=mod_dat_wk_cbou_fall)
+summary(region_wk_cbou_fll_linear_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_cbou_fll_linear_aov)
+
+# View the results
+print(tukey_results)
+```
+Not Significant
+
+################################################################################################################################################################################################################################################
+
+# Local, Winter, WEEKLY detection data
+```{r}
+# Create a new data frame for winter
+mod_dat_wk_cbou_winter <- mod_dat_wk_cbou[mod_dat_wk_cbou$four_season == "Winter", ]
+```
+
+##Target analysis
+```{r}
+# Group by target_cons and count unique locations within each group
+unique_cbou_locations_by_target_wtr <- mod_dat_wk_cbou_winter %>%
+  group_by(target_cons) %>%
+  summarise(unique_locations = n_distinct(location))
+
+# Print the result
+print(unique_cbou_locations_by_target_wtr)
+
+#run anova to see if target is important
+region_wk_cbou_wtr_aov <- aov(Caribou ~ target_cons, data=mod_dat_wk_cbou_winter)
+summary(region_wk_cbou_wtr_aov)
+
+# Perform Tukey's HSD test to interpret ANOVA
+tukey_results <- TukeyHSD(region_wk_cbou_wtr_aov)
+
+# View the results
+print(tukey_results)
+```
+
+```{r}
+#run anova on hydro targets
+region_wk_cbou_wtr_hydro_aov <- aov(Caribou ~ target_hydro, data=mod_dat_wk_cbou_winter)
+summary(region_wk_cbou_wtr_hydro_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_cbou_wtr_hydro_aov)
+
+# View the results
+print(tukey_results)
+```
+Not Significant
+
+```{r}
+#run anova on linear targets
+region_wk_cbou_wtr_linear_aov <- aov(Caribou ~ target_linear, data=mod_dat_wk_cbou_winter)
+summary(region_wk_cbou_wtr_linear_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_cbou_wtr_linear_aov)
+
+# View the results
+print(tukey_results)
+```
+                Df Sum Sq Mean Sq F value   Pr(>F)    
+target_linear    2    6.0  2.9911    7.94 0.000371 ***
+
+                    diff        lwr        upr     p adj
+Esker-None   0.391574966  0.1607959  0.6223541 0.0002123
+
+############################################################################################################################################################################################################################
+
+# Local, Spring, WEEKLY detection data
+```{r}
+# Create a new data frame for spring
+mod_dat_wk_cbou_spri <- mod_dat_wk_cbou[mod_dat_wk_cbou$four_season == "Spring", ]
+```
+
+##Target analysis
+```{r}
+# Group by target_cons and count unique locations within each group
+unique_cbou_locations_by_target_spr <- mod_dat_wk_cbou_spri %>%
+  group_by(target_cons) %>%
+  summarise(unique_locations = n_distinct(location))
+
+# Print the result
+print(unique_cbou_locations_by_target_spr)
+
+#run anova to see if target is important
+region_wk_cbou_spr_aov <- aov(Caribou ~ target_cons, data=mod_dat_wk_cbou_spri)
+summary(region_wk_cbou_spr_aov)
+
+# Perform Tukey's HSD test to interpret ANOVA
+tukey_results <- TukeyHSD(region_wk_cbou_spr_aov)
+
+# View the results
+print(tukey_results)
+```
+
+```{r}
+#run anova on hydro targets
+region_wk_cbou_spr_hydro_aov <- aov(Caribou ~ target_hydro, data=mod_dat_wk_cbou_spri)
+summary(region_wk_cbou_spr_hydro_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_cbou_spr_hydro_aov)
+
+# View the results
+print(tukey_results)
+```
+Not Significant
+
+```{r}
+#run anova on linear targets
+region_wk_cbou_spr_linear_aov <- aov(Caribou ~ target_linear, data=mod_dat_wk_cbou_spri)
+summary(region_wk_cbou_spr_linear_aov)
+
+# Perform Tukey's HSD test
+tukey_results <- TukeyHSD(region_wk_cbou_spr_linear_aov)
+
+# View the results
+print(tukey_results)
+```
+Not Significant
+
+#SUMMARIZE
+
+Create tables summarizing effort and independent detections for each focal species in each subset dataset.
+```{r}
+# List of dataset names
+dataset_names <- c("mod_dat_wk", "mod_dat_wk_summer", "mod_dat_wk_fall", "mod_dat_wk_winter", "mod_dat_wk_spri",
+                    "mod_dat_wk_cbou", "mod_dat_wk_cbou_summer", "mod_dat_wk_cbou_fall", "mod_dat_wk_cbou_winter",
+                    "mod_dat_wk_cbou_spri")
+
+# Get the dataframes from the environment
+datasets <- mget(dataset_names)
+
+# Function to create summary dataframe for each dataset
+summarize_dataset <- function(df, dataset_name) {
+  summary_df <- data.frame(
+    Dataset = dataset_name,
+    Total_Effort = sum(df$n_days_effort),
+    Caribou_Detections = sum(df$Caribou, na.rm = TRUE),
+    Muskox_Detections = sum(df$Muskox, na.rm = TRUE),
+    Moose_Detections = sum(df$Moose, na.rm = TRUE),
+    Gray_Wolf_Detections = sum(df$Gray.Wolf, na.rm = TRUE),
+    Grizzly_Bear_Detections = sum(df$Grizzly.Bear, na.rm = TRUE)
+  )
+  return(summary_df)
+}
+
+# Create summary dataframes for each dataset
+summary_dfs <- mapply(summarize_dataset, datasets, dataset_names, SIMPLIFY = FALSE)
+
+# Combine summary dataframes into a single dataframe
+summary_all <- do.call(rbind, summary_dfs)
+
+# Print summary dataframe
+print(summary_all)
+
+#save table
+#write.csv(summary_all, file = "Tables/GLMM_DataSet_CountandEffort_Comparison.csv", row.names = F)
+```
+                                      Dataset Total_Effort Caribou_Detections Muskox_Detections Moose_Detections
+mod_dat_wk                         mod_dat_wk        83309               2348               746              180
+mod_dat_wk_summer           mod_dat_wk_summer        30002                372               599               97
+mod_dat_wk_fall               mod_dat_wk_fall        12490               1633                54               13
+mod_dat_wk_winter           mod_dat_wk_winter        19238                224                22               22
+mod_dat_wk_spri               mod_dat_wk_spri        21579                119                71               48
+mod_dat_wk_cbou               mod_dat_wk_cbou        40039               2348               212               29
+mod_dat_wk_cbou_summer mod_dat_wk_cbou_summer        14733                372               180               19
+mod_dat_wk_cbou_fall     mod_dat_wk_cbou_fall         5971               1633                11                2
+mod_dat_wk_cbou_winter mod_dat_wk_cbou_winter         9226                224                 3                1
+mod_dat_wk_cbou_spri     mod_dat_wk_cbou_spri        10109                119                18                7
+                       Gray_Wolf_Detections Grizzly_Bear_Detections
+mod_dat_wk                              130                      38
+mod_dat_wk_summer                        42                      25
+mod_dat_wk_fall                          34                       0
+mod_dat_wk_winter                        15                       0
+mod_dat_wk_spri                          39                      13
+mod_dat_wk_cbou                          57                      37
+mod_dat_wk_cbou_summer                    6                      25
+mod_dat_wk_cbou_fall                     27                       0
+mod_dat_wk_cbou_winter                   13                       0
+mod_dat_wk_cbou_spri                     11                      12
+
+#SAVE DATA AS CSV
+
+##Regional data sets
+```{r}
+#multiseason
+write.csv(mod_dat_wk, file="Processed_Data/glmm_2_wk_region_multi.csv", row.names = F)
+#summer
+write.csv(mod_dat_wk_summer, file="Processed_Data/glmm_2_wk_region_smr.csv", row.names = F)
+#fall
+write.csv(mod_dat_wk_fall, file="Processed_Data/glmm_2_wk_region_fall.csv", row.names = F)
+#winter
+write.csv(mod_dat_wk_winter, file="Processed_Data/glmm_2_wk_region_wtr.csv", row.names = F)
+#spring
+write.csv(mod_dat_wk_spri, file="Processed_Data/glmm_2_wk_region_spr.csv", row.names = F)
+```
+
+##Local data sets
+```{r}
+#multiseason
+write.csv(mod_dat_wk_cbou, file="Processed_Data/glmm_2_wk_local_multi.csv", row.names = F)
+#summer
+write.csv(mod_dat_wk_cbou_summer, file="Processed_Data/glmm_2_wk_local_smr.csv", row.names = F)
+#fall
+write.csv(mod_dat_wk_cbou_fall, file="Processed_Data/glmm_2_wk_local_fall.csv", row.names = F)
+#winter
+write.csv(mod_dat_wk_cbou_winter, file="Processed_Data/glmm_2_wk_local_wtr.csv", row.names = F)
+#spring
+write.csv(mod_dat_wk_cbou_spri, file="Processed_Data/glmm_2_wk_local_spr.csv", row.names = F)
+```
+
+#regional only dataset
+```{r}
+#mod_dat_wk_region_only <- subset(mod_dat_wk, spatial_scale == "regional")
+```
+

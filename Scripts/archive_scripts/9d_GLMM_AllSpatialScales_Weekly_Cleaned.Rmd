@@ -22,7 +22,7 @@ This script also:
 
 ```{r}
 # Check you have them and load them
-list.of.packages <- c("kableExtra", "tidyr", "ggplot2", "gridExtra", "dplyr", "Hmsc", "jtools", "lubridate", "corrplot", "MuMIn","stringr","sf","raster","leaflet", "tidyverse","htmlwidgets","webshot", "purrr", "magick","forcats","multcomp", "reshape2", "lme4", "tidyr", "TMB", "glmmTMB", "car")
+list.of.packages <- c("kableExtra", "tidyr", "ggplot2", "gridExtra", "dplyr", "Hmsc", "jtools", "lubridate", "corrplot", "MuMIn","stringr","sf","raster","leaflet", "tidyverse","htmlwidgets","webshot", "purrr", "magick","forcats","multcomp", "reshape2", "lme4", "tidyr", "TMB", "glmmTMB", "car", "DHARMa")
 
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages)
@@ -3094,7 +3094,7 @@ print(results)
 ##Local, Fall
 ```{r}
 # Select only the species detection columns by explicitly naming them
-co_occurrences <- mod_dat_wk %>%
+co_occurrences <- mod_dat_wk_cbou_fall %>%
   dplyr::select(Caribou, Moose, Muskox, Gray.Wolf, Grizzly.Bear, Predators, Ungulates) %>%
   mutate(across(everything(), ~ . >= 1))
 
