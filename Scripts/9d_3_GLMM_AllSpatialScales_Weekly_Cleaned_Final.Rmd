@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # README
 
-Pared down script for only the final models used in analyses. 
+Pared down script for only the final models used in analyses.  
 
 For full list of models tested (e.g. previous ideas, global models, etc), look at 9d_GLMM_AllSpatialScales_Weekly_Cleaned.Rmd
 
